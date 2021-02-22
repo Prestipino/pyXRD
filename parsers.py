@@ -64,7 +64,8 @@ def read_raw(self, filename):
             self.version = "ver. 4"
         else:
             print("no format detected")
-        print(head)
+        print('head= ', head)
+        print('pippo')
         if self.version == "ver. 3":
             filex.seek(8)
             file_status = read_uint32_le()
@@ -198,6 +199,7 @@ def read_raw(self, filename):
                     if self.debug:
                         raise frase
         pass
+
         if self.version == "ver. 4":
             filex.seek(0)
             filex.read(8)

@@ -152,7 +152,9 @@ class XRDfile(dict):
                 print('reading as RAW\n')
                 try:
                     read_raw(self, filename)
-                    self.data = [XRDfile(i['array'], i['info']) for i in self.data]
+                    print('IO  self.data', self.data[0])
+                    self.data = [XRDdata(i['array'], i['info']) for i in self.data]
+                    print(self.data[0])
                 except Exception as error:
                     print('impossible to open as RAW', error)
                     if debug:
