@@ -11,10 +11,11 @@ bruker format has been translate from cpp to python from library xyconv
 varius usefull example
 --------------------------------------
 coluave=IO.XRDfile()
+coluave.info.update(colu.info)
 coluave.data=[]
 for i in range(0,42,3):
     coluave.data.append(colu.merge(slicei=range(i,i+3), output=True))
-    coluave.data[-1].info.update(colu.data[i].info)
+    # coluave.data[-1].info.update(colu.data[i].info)
 coluave.data.extend(colu.data[42:])
 --------------------------------------
 
@@ -26,6 +27,7 @@ draw()
 
 import numpy as np
 from matplotlib import pylab as plt
+from .bkground import spline_bkg
 from .parsers import read_raw, read_D1B
 
 plt.ion()
@@ -78,15 +80,124 @@ class XRDdata(np.ndarray):
         else:
             set_UXDat(self.info, lin)
 
-    def plot(self, new=1):
+    def plot(self, new=1, cps=False):
+
         plt.figure()
-        plt.plot(self.x, self.y)
+        if cps:
+            if self.info['UNIT'] == 'cps':
+                plt.plot(self.x, self.cps)
+
+        else:
+            plt.errorbar(self.x, self.y, yerr=self.err,
+                         capsize=2)
         plt.xlabel(r'2$\theta$ ($\degree$)')
         plt.ylabel('Intensity (counts)')
-        plt.legend()
+
+    def export(self, name, Format='xy', info=None,
+               prec=None, bkg=False, inname=False):
+        """ export to text function
+        Args:
+            name (str): basename
+            Format (str): available 'xy', fullprof style'FPxy'
+            info (str): info to put in the name
+            prec (int): precision of the info in the name
+            bkg (bool): if background should be subtracted
+
+        Returns:
+            bool: The return value. True for success, False otherwise.
+        """
+        if info:
+            if prec is None:
+                xx = self.info[info]
+            elif prec > 0:
+                xx = round(float(self.info[info]), prec)
+            else:
+                xx = int(round(float(self.info[info]), prec))
+            xx = f'_{str(xx)}'
+        else:
+            xx = ''
+
+        Fheader = ['XYDATA\n', '\n', '\n', '\n', '\n']
+        Fcomments = '# '
+        ext = Format
+
+        if 'UNIT' in self.info:
+            if self.info['UNIT'] == 'cps':
+                Fheader[1] = 'UNIT= cps\n'
+            elif self.info['UNIT'] == 'counts':
+                Fheader[1] = 'UNIT= counts, in {:.3f} s\n'.format(
+                    self.info['STEPTIME'])
+        else:
+            if 'STEPTIME' in self.info:
+                if type(self.info['STEPTIME']) is float:
+                    Fheader[1] = 'UNIT= counts, in {:.3f} s\n'.format(
+                        self.info['STEPTIME'])
+
+        if bkg:
+            Fheader[3] = 'background subtracted'
+
+        if Format == 'FPxy':
+            Fcomments = '! '
+
+        if info:
+            Fheader[2] = 'TEMP %s\n' % xx[1:]
+        ext = 'xye'
+
+        y = self.y
+        if bkg and self._bkg:
+            y = self.y - self.bkg
+        if inname:
+            name = '{:s}{:s}.{:s}'.format(name, xx, ext)
+        else:
+            name = '{:s}.{:s}'.format(name, ext)
+        np.savetxt(name, np.vstack([self.x, y, self.err]).T,
+                   fmt='%1.10f', header=''.join(Fheader), comments=Fcomments)
+
+    def def_bkg(self):
+        if hasattr(self, '_bkg'):
+            self._bkg.plotter()
+        else:
+            self._bkg = spline_bkg(np.vstack([self.x, self.y]))
+
+    @property
+    def bkg(self):
+        if isinstance(self._bkg, spline_bkg):
+            return self._bkg.out(self.x)
+        else:
+            return self._bkg
+
+    @bkg.setter
+    def bkg(self, val):
+        self._bkg = val
+
+    @property
+    def err(self):
+        if not(hasattr(self, '_err')):
+            if self.info['UNIT'] == 'counts':
+                self._err = self.__cal_err(self.y)
+            elif self.info['UNIT'] == 'cps':
+                self._err = self.__cal_err(self.y, self.info['STEPTIME'])
+        return self._err
+
+    def __cal_err(self, y, time=None):
+        if time:
+            return np.sqrt(y) / np.sqrt(time)
+        else:
+            return np.sqrt(y)
+
+    @err.setter
+    def err(self, val):
+        self._err = val
+
+    @property
+    def cps(self): 
+        if self.info['UNIT'] == 'cps':
+            return self.y   
+        elif self.info['UNIT'] == 'counts':
+            return self.y / self.info['STEPTIME']
 
 
-class XRDfile(dict):
+class XRDfile(object):
     """class for import of xrd file
     class for import of xrd file derived by dict()
     values of the dictionary
@@ -116,8 +227,9 @@ class XRDfile(dict):
     """
 
     def __init__(self, filename=None, format=None, debug=False):
-        super(XRDfile, self).__init__()
+        # +super(XRDfile, self).__init__()
         self.debug = debug
+        self.info = {}
         if format:
             if format == 'datILL':
                 read_D1B(self, filename)
@@ -152,15 +264,15 @@ class XRDfile(dict):
                 print('reading as RAW\n')
                 try:
                     read_raw(self, filename)
-                    print('IO  self.data', self.data[0])
-                    self.data = [XRDdata(i['array'], i['info']) for i in self.data]
-                    print(self.data[0])
+                    self.data = [XRDdata(i['array'],
+                                         i['info']) for i in self.data]
+
                 except Exception as error:
                     print('impossible to open as RAW', error)
                     if debug:
                         read_raw(self, filename)
-        else:
-            print('unknown format')
+            else:
+                print('unknown format')
 
     def _read_sim(self, filename):
         with open(filename, 'r') as filex:
@@ -248,7 +360,8 @@ class XRDfile(dict):
         for j, i in enumerate(self.data):
             i.info['index'] = j
 
-    def export(self, root='xrd', Format='xy', info=None, prec=None):
+    def export(self, root='xrd', Format='xy', info=None, prec=None,
+               inname=False):
         """
            Export available format
            'xy' simple xy without comments
@@ -256,51 +369,24 @@ class XRDfile(dict):
            info precise if an info must be used in the name
            prec is precision of the info
            ex.
-           colu.export(root='colu600T', Format='Fxy', info='TEMPERATURE', prec=1)
+           colu.export(root='colu600T', Format='FPxy',
+                       info='TEMPERATURE', prec=1)
         """
-        def gen_xx(data):
-            if info:
-                if prec is None:
-                    xx = data.info[info]
-                elif prec > 0:
-                    xx = round(float(data.info[info]), prec)
-                else:
-                    xx = int(round(float(data.info[info]), prec))
-                xx = '_' + str(xx)
-            else:
-                xx = ''
-            return xx
-
-        Fheader = ''
-        Fcomments = '# '
-        ext = Format
-        if Format == 'FPxy':
-            Fcomments = '! '
-            Fheader = 'XYDATA\n\n\n\n\n'
-            ext = 'xy'
 
         if len(self.data) == 1:
-            xx = gen_xx(self.data[0])
-            if Format == 'FPxy':
-                Fheader = 'XYDATA\n\nTEMP %s\n\n\n' % xx[1:]
-            name = '{:s}{:s}.{:s}'.format(root, xx, ext)
-            np.savetxt(name, self.data[0], fmt='%1.10f',
-                       header=Fheader, comments=Fcomments)
+            self.data[0].export(root, Format=Format, info=info, prec=prec)
             return
         width = len(str(len(self.data) - 1))
         for j, i in enumerate(self.data):
-            xx = gen_xx(i)
             if Format == 'FPxy':
                 name = '{:s}-{:d}'.format(root, j)
-                Fheader = 'XYDATA\n\nTEMP %s\n\n\n' % xx[1:]
             else:
                 name = '{:s}_{:0{}d}'.format(root, j, width)
-            name = '{:s}{:s}.{:s}'.format(name, xx, ext)
-            np.savetxt(name, i, fmt='%1.10f',
-                       header=Fheader, comments=Fcomments)
+            i.export(name, Format=Format, info=info, prec=prec, inname=inname)
         return
 
-    def plot(self, shift=0, start=None, stop=None, info='index', new=True):
+    def plot(self, shift=0, start=None, stop=None, info='index',
+             new=True):
         '''plot the different scans
         '''
         if new:
@@ -310,15 +396,24 @@ class XRDfile(dict):
             a.canvas.mpl_connect('pick_event', onpick)
 
         for j, i in enumerate(self.data[start:stop]):
-            plt.plot(i.x, i.y + j * shift, label=str(i.info[info]), picker=5)
+            if i.info['UNIT'] == 'counts':
+                y = i.y / i.info['STEPTIME']
+            else:
+                y = i.y
+            plt.plot(i.x, y + j * shift, label=str(i.info[info]),
+                     picker=True, pickradius=5)
         plt.xlabel(r'2$\theta$ ($\degree$)')
-        plt.ylabel('Intensity (counts)')
+        plt.ylabel('Intensity (cps)')
         if len(self.data[start:stop]) < 11:
             plt.legend()
 
     def plot_info(self, info, *args, **keyargs):
         '''plot a scan info as function of the scan number
            *args, **keyargs are argument for the plot
+
+           ex:
+           -------------------
+           ele1.plot_info('TEMPERATURE')
         '''
         x = [i.info['index'] for i in self.data]
         y = [float(i.info[info]) for i in self.data]
@@ -326,13 +421,15 @@ class XRDfile(dict):
 
     def D2plot(self, log=0, start=None, stop=None, info='index', **keyargs):
         plt.figure()
-        data = np.vstack([i.y for i in self.data[start:stop]])
+        data = np.vstack([i.cps for i in self.data[start:stop]])
+        data = np.flip(data, axis=0)
         print(data.shape)
         if log:
             data = np.log(data)
         x = self.data[0].x
         y = [i.info[info] for i in self.data]
-        plt.imshow(data, aspect='auto', extent=(x[0], x[-1], y[0], y[-1]), **keyargs)
+        plt.imshow(data, aspect='auto', extent=(
+            x[0], x[-1], y[0], y[-1]), **keyargs)
         plt.xlabel(r'2$\theta$ ($\degree$)')
         plt.ylabel(info)
 
@@ -352,119 +449,115 @@ class XRDfile(dict):
         if slicei is None:
             slicei = list(range(len(self.data)))
 
-        data = self.data
-        d_inf = {i: {} for i in slicei}
+        setdata = [self.data[i] for i in slicei]
 
-        d_inf['x_max'] = max([data[i].x[-1] for i in slicei])
-        d_inf['START'] = min([data[i].x[0] for i in slicei])
-        d_inf['STEPSIZE'] = max([data[i].info['STEPSIZE'] for i in slicei])
-
-        x = np.arange(d_inf['START'], d_inf['x_max'], d_inf['STEPSIZE'])
-
-        moretime = len(set([i.info['STEPTIME'] for i in data])) > 1
-
-        for j in slicei:
-            d_inf[j]['y'] = np.interp(x, data[j].x, data[j].y,
-                                      left=-1, right=-1.0)
-
-            d_inf[j]['time'] = np.where(d_inf[j]['y'] > -1.0, 1.0, 0.0)
-
-            if moretime:
-                d_inf[j]['time'] *= data[j].info['STEPTIME']
-
-            d_inf[j]['y'] = np.where(d_inf[j]['y'] > -1, d_inf[j]['y'], 0)
-
-        time_tot = np.sum([d_inf[j]['time'] for j in slicei], axis=0)
-        y_tot = np.sum([d_inf[j]['y'] for j in slicei], axis=0)
-        y = y_tot / time_tot
-
-        if moretime:
-            d_inf['UNIT'] = 'cps'
-            d_inf['STEPTIME'] = time_tot
-        else:
-            d_inf['UNIT'] = 'counts'
-            d_inf['STEPTIME'] = time_tot * data[0].info['STEPTIME']
-            d_inf['STEPTIME0'] = data[0].info['STEPTIME']
-
-        # remove all the single scan info
-        for i in list(d_inf.keys()):
-            if isinstance(i, int):
-                del d_inf[i]
+        merged = merge_XRD(setdata, plot=plot)
         if output:
-            return XRDdata(np.vstack((x, y)).T, info=d_inf)
-        self.merged = XRDdata(np.vstack((x, y)).T, info=d_inf)
+            return merged
+        self.merged = merged
+
+    def peak_intensity(self, xmin, xmax, start=None, stop=None,
+                       plot=True, info=None):
+        x = [i.info['index'] for i in self.data]
+        axmin = np.searchsorted(self.data[start:stop][0].x, xmin)
+        axmax = np.searchsorted(self.data[start:stop][0].x, xmax)
+        step = (xmax - xmin) / 2
+
+        def integP(i):
+            fp = np.trapz(i.y[axmin:axmax], i.x[axmin:axmax])
+            return fp - (step * (i.y[axmin] + i.y[axmax]))
+
+        y = [integP(i) for i in self.data[start:stop]]
 
         if plot:
-            self.plot()
-            plt.plot(self.merged.x, self.merged.y, '.-')
+            c1 = 'tab:blue'
+            fig, ax1 = plt.subplots()
+            ax1.plot(x, y, '.-', color=c1)
+            ax1.set_xlabel('index')
+            ax1.set_ylabel('integrated intensity')
+            if info:
+                c2 = 'tab:red'
+                ax1.tick_params(axis='y', labelcolor=c1)
+                ax1.set_ylabel('integrated intensity', color=c1)
+                ax2 = ax1.twinx()
+                ax2.plot(x,
+                         [float(i.info[info]) for i in self.data[start:stop]],
+                         '-', color=c2)
+                ax2.set_ylabel(info, color=c2)
+                ax2.tick_params(axis='y', labelcolor=c2)
+            plt.title(f'range {xmin}--{xmax}')
+        return np.hstack((x, y)).T
 
 
-def merge_XRD(slicei):
-    """merge several patters
-    keepinf metadata information 
-    only tewsted with raw brucker file 
+def merge_XRD(slicei, plot=True):
+    """
+    merge several patters
+    keepinf metadata information
+    only tewsted with raw brucker file
 
     to see with the experiment done for pierric
 
     Args:
         slice = list of XRDdata
     """
-    qnt = list(range(len(slicei)))
 
-    d_inf = {i: {} for i in qnt}
+    d_inf = {}
+    d_inf.update(slicei[0].info)
 
-    d_inf['x_max'] = max([i.info['x_max'] for i in slicei])
-    d_inf['START'] = min([i.info['START'] for i in slicei])
-    d_inf['STEPSIZE'] = max([i.info['STEPSIZE'] for i in slicei])
+    one_x = all([np.array_equal(slicei[0].x, i.x) for i in slicei])
 
-    x = np.arange(d_inf['START'], d_inf['x_max'], d_inf['STEPSIZE'])
-
-    time = slicei[0].info['STEPTIME']
-    moretime = sum(sum([i.info['STEPTIME'] != time for i in slicei]))
-
-    for j in qnt:
-        d_inf[j]['y'] = np.interp(x, slicei[j].x, slicei[j].y,
-                                  left=-1, right=-1.0)
-
-        d_inf[j]['time'] = np.where(d_inf[j]['y'] > -1.0, 1.0, 0.0)
-
-        if moretime:
-            d_inf[j]['time'] *= np.interp(x, slicei[j].x, slicei[j].info['STEPTIME'],
-                                          left=-1, right=-1.0)
-
-        d_inf[j]['y'] = np.where(d_inf[j]['y'] > -1, d_inf[j]['y'], 0)
-
-    time_tot = np.sum([d_inf[j]['time'] for j in qnt], axis=0)
-    y_tot = np.sum([d_inf[j]['y'] for j in qnt], axis=0)
-    y = y_tot / time_tot
-
-    if moretime:
-        d_inf['UNIT'] = 'cps'
-        d_inf['STEPTIME'] = time_tot
-    else:
+    if one_x:
+        d_inf['STEPTIME'] = np.sum([j.info['STEPTIME']
+                                    for j in slicei], axis=0)
+        x = slicei[0].x
+        y = np.sum([j.y for j in slicei], axis=0)
         d_inf['UNIT'] = 'counts'
-        d_inf['STEPTIME'] = time_tot * time
-        d_inf['STEPTIME0'] = time
 
-    # remove all the single scan info
-    for i in list(d_inf.keys()):
-        if isinstance(i, int):
-            del d_inf[i]
+    else:
+        d_inf['x_max'] = np.round(max([i.x[-1] for i in slicei]), 7)
+        d_inf['START'] = np.round(min([i.x[0] for i in slicei]), 7)
+        d_inf['STEPSIZE'] = max([i.info['STEPSIZE'] for i in slicei])
+        d_inf['STEPSIZE'] = np.round(d_inf['STEPSIZE'], 7)
+
+        x = np.arange(d_inf['START'],
+                      d_inf['x_max'] + d_inf['STEPSIZE'] / 2,
+                      d_inf['STEPSIZE'])
+
+        y, time = np.zeros((2, *x.shape))
+
+        for j in slicei:
+            j_y = np.interp(x, j.x, j.y,
+                            left=-1, right=-1.0)
+            y += np.where(j_y > -1, j_y, 0)
+
+            time += np.where(j_y > -1, j.info['STEPTIME'], 0)
+        d_inf['UNIT'] = 'cps'
+
+        while True:
+            if time[-1] == 0:
+                time = time[:-1]
+                x = x[:-1]
+                y = y[:-1]
+            else:
+                break
+
+        d_inf['STEPTIME'] = time
+        y /= time
 
     merged = XRDdata(np.vstack((x, y)).T, info=d_inf)
 
-    plt.figure()
-    for j, i in enumerate(slicei):
-        plt.plot(i.x, i.y, label=str(j))
+    if plot:
+        for j, i in enumerate(slicei):
+            plt.plot(i.x, i.y, label=str(j))
+        plt.plot(merged.x, merged.y, '.-')
 
-    plt.plot(merged.x, merged.y, '.-', label='merged')
-    plt.legend()
     return merged
 
 
 class STRfile(dict):
     """ALLOWS TO READ STR file from ICSD
     """
+
     def __init__(self, filename=None, debug=False):
         super(STRfile, self).__init__()
         if filename:

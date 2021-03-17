@@ -97,14 +97,11 @@ class polyfitFig:
 class spline_bkg:
     '''interactive background for difficult background
     '''
+
     def __init__(self, data):
         if isinstance(data, str):
-            data=np.loadtxt(data).T
+            data = np.loadtxt(data).T
         self.data = data
-        if len(self.data) > 2:
-            pass
-        else:
-            self.data = np.vstack([self.data, np.sqrt(self.data[1])])
 
         self.fig, self.ax = plt.subplots()
         # data line
@@ -160,7 +157,7 @@ class spline_bkg:
         else:
             minus = 0
         y = self.data[1] - bkg + minus
-        return np.vstack([self.data[0], y, self.data[2]])
+        return np.vstack([self.data[0], y])
 
     def save_signal(self, filname):
         np.savetxt(filname, self.get_signal().T)

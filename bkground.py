@@ -97,22 +97,30 @@ class polyfitFig:
 class spline_bkg:
     '''interactive background for difficult background
     '''
+
     def __init__(self, data):
         if isinstance(data, str):
-            data=np.loadtxt(data).T
+            data = np.loadtxt(data).T
         self.data = data
         if len(self.data) > 2:
             pass
         else:
             self.data = np.vstack([self.data, np.sqrt(self.data[1])])
+        self.plotter()
 
+    def plotter(self):
         self.fig, self.ax = plt.subplots()
         # data line
-        self.li, = plt.plot(data[0], data[1], 'k')
+        self.li, = plt.plot(self.data[0], self.data[1], 'k')
         # self.li = plt.errorbar(x=data[0], y=data[1], yerr=data[2],
         #                        fmt='k', capsize=3)
-        self.b, = plt.plot([], [], 'r')
-        self.polyl, = plt.plot([], [], 'o')
+        if hasattr(self, 'polyl'):
+            self.polyl, = plt.plot(self.polyl.get_xdata(),
+                                   self.polyl.get_ydata(), 'o')
+            self.b, = plt.plot(self.data[0], self.out(self.data[0]), 'r')
+        else:
+            self.b, = plt.plot([], [], 'r')
+            self.polyl, = plt.plot([], [], 'o')
 
         plt.xlabel('2$\Theta$($\degree$)')
         plt.ylabel('Intensity (Counts)')
@@ -128,7 +136,7 @@ class spline_bkg:
                 i = np.searchsorted(xpoly, event.xdata)
                 xpoly = np.insert(xpoly, i, event.xdata)
                 if event.button == 2:
-                    ypoly = np.insert(ypoly, i, data[1][i])
+                    ypoly = np.insert(ypoly, i, self.data[1][i])
                 elif event.button == 1:
                     ypoly = np.insert(ypoly, i, event.ydata)
             if event.button == 3:
@@ -146,8 +154,8 @@ class spline_bkg:
             xpoly = self.polyl.get_xdata()
             ypoly = self.polyl.get_ydata()
             self.out = UnivariateSpline(xpoly, ypoly)
-            self.b.set_ydata(self.out(data[0]))
-            self.b.set_xdata(data[0])
+            self.b.set_ydata(self.out(self.data[0]))
+            self.b.set_xdata(self.data[0])
             self.ax.draw_artist(self.b)
             return
 
@@ -160,7 +168,7 @@ class spline_bkg:
         else:
             minus = 0
         y = self.data[1] - bkg + minus
-        return np.vstack([self.data[0], y, self.data[2]])
+        return np.vstack([self.data[0], y])
 
     def save_signal(self, filname):
         np.savetxt(filname, self.get_signal().T)
