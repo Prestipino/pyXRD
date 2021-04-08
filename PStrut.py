@@ -1,4 +1,4 @@
-from . import GIIt
+import Dans_Diffraction as dif
 from .pt_tables import pt_p, N_av
 from struct import pack
 import numpy as np
@@ -14,11 +14,9 @@ frequency = 2500  # Set Frequency To 2500 Hertz
 duration = 1000  # Set Duration To 1000 ms == 1 second
 
 
-
-
 _EXACT_COSD = {
-        0.0 : +1.0,   60.0 : +0.5,   90.0 : 0.0,  120.0 : -0.5,
-      180.0 : -1.0,  240.0 : -0.5,  270.0 : 0.0,  300.0 : +0.5
+    0.0: +1.0, 60.0: +0.5, 90.0: 0.0, 120.0: -0.5,
+    180.0: -1.0, 240.0: -0.5, 270.0: 0.0, 300.0: +0.5
 }
 
 _tol_r = 1e-6
@@ -56,21 +54,7 @@ def __type2A__(x):
     return x.replace('+', ' +').replace('-', ' -').split(' ')[0]
 
 
-class crystal(object):
-    def __init__(self, **kwds):
-        for i, j in list(kwds.items()):
-            setattr(self, i, j)
-        if hasattr(self, 'basis') and not hasattr(self, 'Cell'):
-            self.Cell = np.round(GIIt.Gmat2cell(
-                np.dot(self.basis.T, self.basis)), 4)
-        # self.bonds=[]
-        if not hasattr(self, 'Title'):
-            self.Title = ''
-        if hasattr(self, 'SpaceGroup'):
-            self.SpaceGroup = GIIt.StandardizeSpcName(self.SpaceGroup)
-        else:
-            self.SpaceGroup == GIIt.StandardizeSpcName('P1')
-        self.__setinfo()
+class crystal(dif.Crystal):
 
     @classmethod
     def import_from(cls, data, format='auto'):
@@ -81,9 +65,10 @@ class crystal(object):
             cfl
             spglib __babel
         """
-        ### utility functions###########################
-        def strip_float(x): return float(x.split('(')[0])
-        ################################################
+        # ## utility functions###########################
+        def strip_float(x):
+            return float(x.split('(')[0])
+        # ###############################################
         try:
             indata = open(data)
             data_st = indata.readlines()
@@ -94,15 +79,16 @@ class crystal(object):
                 raise x
         except TypeError:
             pass
-        ################################################
+        # ###############################################
         if format == 'auto' and data[-3:] == 'mol' or format == 'moldraw':
             print('moldraw')
 
-            ######## search atoms #########
+            # ####### search atoms #########
             cell = list(map(float, data_st[3].split()))
             if cell == [1.0] * 3 + [90.0] * 3:
-                fmatrix = array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+                fmatrix = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
             else:
+                print('ERROR')
                 fmatrix = self.__frac2cart__(cell)
             atomlist = []
             for line in data_st[5:]:
@@ -137,7 +123,8 @@ class crystal(object):
             print(Spgr)
             SpaceGroup = GIIt.StandardizeSpcName(Spgr)
             er, Spgr = GIIt.SpcGroup(SpaceGroup)
-            # check if occupatio are chemical or crystallographyc:  if one occ>1
+            # check if occupatio are chemical or crystallographyc:  if one
+            # occ>1
             occ_type_chem = False
             for lab, at in list(Asym_atoms.items()):
                 at['sit_sym'], at['mult'], Ndup, dupDir = GIIt.SytSym(
@@ -150,7 +137,19 @@ class crystal(object):
                 for lab, at in list(Asym_atoms.items()):
                     at['occ'], at['cr_occ'] = at['cr_occ'], round(
                         at['cr_occ'] * 1.0 * at['mult'] / Spgr['SGGmult'], 4)
-            return cls(Cell=Cell, Asym_atoms=Asym_atoms, SpaceGroup=SpaceGroup, Spgr=Spgr)
+
+            out = cls()
+            out.Cell.update_cif({zip(['_cell_length_a'  ,'_cell_length_b',
+                                       '_cell_length_c', '_cell_angle_alpha',
+                                       '_cell_angle_beta','_cell_angle_gamma'], 
+                                     Cell)})
+            
+
+            return out(
+                Cell=Cell,
+                Asym_atoms=Asym_atoms,
+                SpaceGroup=SpaceGroup,
+                Spgr=Spgr)
         ######## other cases #########
         elif (format == 'auto' and isinstance(data, tuple) or format == 'spglib'):
 
@@ -161,8 +160,14 @@ class crystal(object):
             Sym = spglib.get_symmetry(x)
             for i, j in enumerate(np.unique(Sym['equivalent_atoms'])):
                 label = pt_p(x[2][j], 'sym') + str(i + 1)
-                AsymAtom[label] = {'occ': 1, 'x': x[1][j][0], 'y': x[1]
-                                   [j][1], 'z': x[1][j][2], 'type': pt_p(x[2][j], 'sym')}
+                AsymAtom[label] = {
+                    'occ': 1,
+                    'x': x[1][j][0],
+                    'y': x[1][j][1],
+                    'z': x[1][j][2],
+                    'type': pt_p(
+                        x[2][j],
+                        'sym')}
                 convert_l[j] = label
 
             Atoms_cell['label'] = [convert_l[j]
@@ -170,10 +175,15 @@ class crystal(object):
             Atoms_cell['xyz'] = x[1]
             SG = GIIt.spgbyNum[int(spglib.get_spacegroup(
                 x).split('(')[1].replace(')', ''))]
-            return cls(basis=x[0].T, Asym_atoms=AsymAtom, SpaceGroup=SG, Atoms_cell=Atoms_cell)
+            return cls(
+                basis=x[0].T,
+                Asym_atoms=AsymAtom,
+                SpaceGroup=SG,
+                Atoms_cell=Atoms_cell)
         ######## other cases #########
         else:
             print('not recognized format')
+
     def __setinfo(self):
         er, self.Spgr = GIIt.SpcGroup(self.SpaceGroup)
         for lab, at in list(self.Asym_atoms.items()):
@@ -201,7 +211,12 @@ class crystal(object):
             [pt_p(i, 'At_w') * j for i, j in list(self.info['Comp'].items())]) / self.info['Vol']
         self.info['Cr_den'] = round(self.info['Cr_den'] * 1e24 / N_av, 3)
         self.info['Neutrality'] = sum(
-            [at['occ'] * at['mult'] * __type2D__(at['type'])[1] for at in list(self.Asym_atoms.values())])
+            [
+                at['occ'] *
+                at['mult'] *
+                __type2D__(
+                    at['type'])[1] for at in list(
+                    self.Asym_atoms.values())])
         if abs(self.info['Neutrality']) > 0.2:
             print('attention charge unbalanced {:4.2f}'.format(
                 self.info['Neutrality']))
@@ -301,296 +316,345 @@ class crystal(object):
         else:
             return output
 
-
     def __fill_cell(self):
-        self.Atoms_cell={'label':[], 'xyz':[]}    
+        self.Atoms_cell = {'label': [], 'xyz': []}
         for lab, atom in list(self.Asym_atoms.items()):
-            xx=GIIt.GenAtom([atom[i] for i in 'xyz'], self.Spgr)
-            self.Atoms_cell['xyz'].extend([i[0] for i in xx])            
-            self.Atoms_cell['label'].extend([lab]*len(xx))
-        self.Atoms_cell['xyz']=np.array(self.Atoms_cell['xyz'])
+            xx = GIIt.GenAtom([atom[i] for i in 'xyz'], self.Spgr)
+            self.Atoms_cell['xyz'].extend([i[0] for i in xx])
+            self.Atoms_cell['label'].extend([lab] * len(xx))
+        self.Atoms_cell['xyz'] = np.array(self.Atoms_cell['xyz'])
 
-        
     def make_box(self, m=None, center=True, s=None):
         """m lenght of the box list [x,y,z]
            s shift of the box       [x,y,z ]
         """
         self.__fill_cell()
-        if m is None: return
-        m=np.abs(np.array(m))
+        if m is None:
+            return
+        m = np.abs(np.array(m))
         for axe, mult in enumerate(m):
             a_shift = np.zeros(3)
-            a_shift[axe]=1
+            a_shift[axe] = 1
             for i in range(int(mult)):
-                if i==0: continue
-                a_s=a_shift*i
-                self.Atoms_cell['xyz']= np.vstack((self.Atoms_cell['xyz'],
-                                                   self.Atoms_cell['xyz']-a_s))            
+                if i == 0:
+                    continue
+                a_s = a_shift * i
+                self.Atoms_cell['xyz'] = np.vstack(
+                    (self.Atoms_cell['xyz'], self.Atoms_cell['xyz'] - a_s))
                 self.Atoms_cell['label'].extend(self.Atoms_cell['label'])
         pass
         if center:
-           s=np.where((m-1)/2>0, (m-1)/2>0, 0)*-1
-        if not s is None :
-            self.Atoms_cell['xyz']= self.Atoms_cell['xyz']-s
+            s = np.where((m - 1) / 2 > 0, (m - 1) / 2 > 0, 0) * -1
+        if s is not None:
+            self.Atoms_cell['xyz'] = self.Atoms_cell['xyz'] - s
 
-            
-    def search_distance(self,min_d=0.65, max_d=3.60, bond=False, stampa=True, **kargs):    
-        m_c=np.ceil(max_d/self.Cell[:3])*2+1
-        #print m_c
-        self.make_box( m=m_c, center=True)
-        #location=molecule.export('matrix')
-        for lab,asatom in list(self.Asym_atoms.items()): 
-            dist=self.Atoms_cell['xyz']-np.array([asatom[i] for i in 'xyz'])
-            dist=np.dot(self.basis, dist.T).T
-            dist*=dist
-            dist=np.sqrt(np.sum(dist, axis=1))
-            dis_i=np.argsort(dist)
-            asatom['distances']=[]
+    def search_distance(
+            self,
+            min_d=0.65,
+            max_d=3.60,
+            bond=False,
+            stampa=True,
+            **kargs):
+        m_c = np.ceil(max_d / self.Cell[:3]) * 2 + 1
+        # print m_c
+        self.make_box(m=m_c, center=True)
+        # location=molecule.export('matrix')
+        for lab, asatom in list(self.Asym_atoms.items()):
+            dist = self.Atoms_cell['xyz'] - \
+                np.array([asatom[i] for i in 'xyz'])
+            dist = np.dot(self.basis, dist.T).T
+            dist *= dist
+            dist = np.sqrt(np.sum(dist, axis=1))
+            dis_i = np.argsort(dist)
+            asatom['distances'] = []
             for j in dis_i:
-                if dist[j]>min_d:
-                    if  dist[j]>max_d:
+                if dist[j] > min_d:
+                    if dist[j] > max_d:
                         del dist
                         break
                     else:
                         asatom['distances'].append({'label': self.Atoms_cell['label'][j],
-                                    'xyz'  : self.Atoms_cell['xyz'][j],
-                                    'dist' : round(dist[j],3),
-                                    'type' : self.Asym_atoms[self.Atoms_cell['label'][j]]['type']})
+                                                    'xyz': self.Atoms_cell['xyz'][j],
+                                                    'dist': round(dist[j], 3),
+                                                    'type': self.Asym_atoms[self.Atoms_cell['label'][j]]['type']})
             pass
         if stampa:
             print('\n')
-            for lab,asatom in list(self.Asym_atoms.items()):
-                print('-'*44,'\n','Atom {} distance between {:} and {:} Ang'.format(lab, min_d,max_d))
+            for lab, asatom in list(self.Asym_atoms.items()):
+                print(
+                    '-' * 44,
+                    '\n',
+                    'Atom {} distance between {:} and {:} Ang'.format(
+                        lab,
+                        min_d,
+                        max_d))
                 print('distance    label     x       y       z')
                 for dis in asatom['distances']:
-                    print('{: 5.3f}        {:<5} {: 5.3f}  {: 5.3f}  {: 5.3f} '.format(dis['dist'], dis['label'], *dis['xyz']))
-                print('-'*44,'\n'*2)
-            
+                    print(
+                        '{: 5.3f}        {:<5} {: 5.3f}  {: 5.3f}  {: 5.3f} '.format(
+                            dis['dist'], dis['label'], *dis['xyz']))
+                print('-' * 44, '\n' * 2)
 
-    def sBVS(self, min_d=0.65, max_d=3.60, stampa=True, BvsPar=None):  
-        """parameters 
+    def sBVS(self, min_d=0.65, max_d=3.60, stampa=True, BvsPar=None):
+        """parameters
            {Label1:{ Label2: ncode, Label2 :[Ro, b] }, species1:{species2 :n code} }
         """
-        #----------------------------------------------------------
-        symb_ok = lambda x : True if '+' in x or '-' in x else False
-        
+        # ----------------------------------------------------------
+        def symb_ok(x): return True if '+' in x or '-' in x else False
+
         def cou_split(x):
-            sym1, val1 =x[0].replace('+',' +').replace('-',' -').split(' ') 
-            sym2, val2 =x[1].replace('+',' +').replace('-',' -').split(' ') 
+            sym1, val1 = x[0].replace('+', ' +').replace('-', ' -').split(' ')
+            sym2, val2 = x[1].replace('+', ' +').replace('-', ' -').split(' ')
             return [sym1, int(val1), sym2, int(val2)]
-        #----------------------------------------------------------
-        
+        # ----------------------------------------------------------
+
         print('\n')
-        self.search_distance(min_d= min_d, max_d=max_d, stampa=0)
-        tvb=set()
+        self.search_distance(min_d=min_d, max_d=max_d, stampa=0)
+        tvb = set()
         for lab, asatom in list(self.Asym_atoms.items()):
             for dis in asatom['distances']:
-                tvb.add(frozenset([asatom['type'],dis['type']]))
-        tvb=dict(list(zip(list(tvb),[None]*len(tvb))))  # tvb became a dictionary
-        
+                tvb.add(frozenset([asatom['type'], dis['type']]))
+        # tvb became a dictionary
+        tvb = dict(list(zip(list(tvb), [None] * len(tvb))))
+
         if tvb == {}:
-           print('no distance available')
-           return
+            print('no distance available')
+            return
         if BvsPar is None:
             for couple in tvb:
-                cou=list(couple)
+                cou = list(couple)
                 assert symb_ok(cou[0]), 'symbol error {:s}'.format(cou[0])
-                
-                if len(cou) ==1: 
-                    if cou[0][:-1]+'9' in vbs.anion: 
-                        inp=dict(list(zip(['Cat','Anion'],[cou[0][:-2]]*2)))
-                    else:
-                        inp=None                    
 
-                if len(cou)==2: 
-                    assert symb_ok(cou[1]),  'symbol error {:s}'.format(cou[1])
-                    if  cou[1] in vbs.anion and not(cou[0] in vbs.anion):  
-                        inp=dict(list(zip(['Cat','VCat','Anion','VAnion'],cou_split(cou))))
-                    elif cou[0] in vbs.anion and not(cou[1] in vbs.anion):
-                        inp=dict(list(zip(['Anion','VAnion','Cat','VCat'],cou_split(cou))))
+                if len(cou) == 1:
+                    if cou[0][:-1] + '9' in vbs.anion:
+                        inp = dict(
+                            list(zip(['Cat', 'Anion'], [cou[0][:-2]] * 2)))
                     else:
-                        inp=None
+                        inp = None
+
+                if len(cou) == 2:
+                    assert symb_ok(cou[1]), 'symbol error {:s}'.format(cou[1])
+                    if cou[1] in vbs.anion and not(cou[0] in vbs.anion):
+                        inp = dict(
+                            list(zip(['Cat', 'VCat', 'Anion', 'VAnion'], cou_split(cou))))
+                    elif cou[0] in vbs.anion and not(cou[1] in vbs.anion):
+                        inp = dict(
+                            list(zip(['Anion', 'VAnion', 'Cat', 'VCat'], cou_split(cou))))
+                    else:
+                        inp = None
                 if inp:
-                    if len(vbs.search_bvp(**inp))>0 or vbs.search_bvp(inp['Cat'],9,inp['Anion']):
-                        print('\n'*3,"##"*24)
+                    if len(vbs.search_bvp(**inp)
+                           ) > 0 or vbs.search_bvp(inp['Cat'], 9, inp['Anion']):
+                        print('\n' * 3, "##" * 24)
                         try:
-                            print("parameters available for {}{:+d} and {}{:+d}".format(inp['Cat'], inp['VCat'], inp['Anion'], inp['VAnion']))
-                            print("##"*24,'\n')
+                            print("parameters available for {}{:+d} and {}{:+d}".format(
+                                inp['Cat'], inp['VCat'], inp['Anion'], inp['VAnion']))
+                            print("##" * 24, '\n')
                             print("defined ox. states ")
                             print(vbs.search_bvp(**inp))
                             print("not specific")
-                            print(vbs.search_bvp(inp['Cat'],9,inp['Anion']))                            
-                        except:   
-                            print("parameters available for  ", cou)    
-                            print(vbs.search_bvp(inp['Cat'],9,inp['Anion']))
+                            print(vbs.search_bvp(inp['Cat'], 9, inp['Anion']))
+                        except BaseException:
+                            print("parameters available for  ", cou)
+                            print(vbs.search_bvp(inp['Cat'], 9, inp['Anion']))
 
                     else:
-                        print(vbs.search_bvp(**inp), ' for ' ,cou)
+                        print(vbs.search_bvp(**inp), ' for ', cou)
                     print('write R0 and b or the index of an entry')
-                    param  = input().split()
-                    print("##"*24,'\n'*3)
-                    if len(param)==2:
-                        R0 ,b = list(map(float, param))    
-                        tvb[couple]={"Ro":R0, "B":b }
-                    if len(param)==1:
-                        index=int(param[0])
-                        tvb[couple]={"Ro":vbs[index]["Ro"], "B":vbs[index]["B"] }
+                    param = input().split()
+                    print("##" * 24, '\n' * 3)
+                    if len(param) == 2:
+                        R0, b = list(map(float, param))
+                        tvb[couple] = {"Ro": R0, "B": b}
+                    if len(param) == 1:
+                        index = int(param[0])
+                        tvb[couple] = {
+                            "Ro": vbs[index]["Ro"], "B": vbs[index]["B"]}
                     else:
                         pass
-                 
+
                 else:
-                    print('write R0 and b for ', cou if len(cou)==2 else cou*2)
-                    param  = input().split()
-                    if len(param)==2:
-                        R0 ,b = list(map(float, param))    
-                        tvb[couple]={"Ro":R0, "B":b }
+                    print(
+                        'write R0 and b for ',
+                        cou if len(cou) == 2 else cou * 2)
+                    param = input().split()
+                    if len(param) == 2:
+                        R0, b = list(map(float, param))
+                        tvb[couple] = {"Ro": R0, "B": b}
         pass
 
-        tvb=dict((i,j) for i,j in list(tvb.items()) if j)
-        print(tvb)        
-        for lab,asatom in list(self.Asym_atoms.items()):
+        tvb = dict((i, j) for i, j in list(tvb.items()) if j)
+        print(tvb)
+        for lab, asatom in list(self.Asym_atoms.items()):
             for dis in asatom['distances']:
-                xx=frozenset([asatom['type'],dis['type']])
+                xx = frozenset([asatom['type'], dis['type']])
                 if xx in tvb:
-                    if asatom['type'] in vbs.anion and not dis['type'] in vbs.anion :
-                        pr=-1
-                    else:                          
-                        pr=1
-                    dis['vi']=pr*np.exp((tvb[xx]["Ro"]-dis['dist'])/tvb[xx]["B"])
-                    dis['vi']*= self.Asym_atoms[dis['label']]['occ']
-                
+                    if asatom['type'] in vbs.anion and not dis['type'] in vbs.anion:
+                        pr = -1
+                    else:
+                        pr = 1
+                    dis['vi'] = pr * \
+                        np.exp((tvb[xx]["Ro"] - dis['dist']) / tvb[xx]["B"])
+                    dis['vi'] *= self.Asym_atoms[dis['label']]['occ']
+
         if stampa:
             print('\n')
-            for lab,asatom in list(self.Asym_atoms.items()):
-                summa=0.0
-                print('-'*44,'\n','Atom {} BVS between {:} and {:} Ang'.format(lab, min_d,max_d))
+            for lab, asatom in list(self.Asym_atoms.items()):
+                summa = 0.0
+                print(
+                    '-' * 44,
+                    '\n',
+                    'Atom {} BVS between {:} and {:} Ang'.format(
+                        lab,
+                        min_d,
+                        max_d))
                 print('distance    label    bond-valence')
                 for dis in asatom['distances']:
                     if 'vi' in dis:
-                        print('{: 5.3f}        {:<5}    {: 3.2f}  '.format(dis['dist'], dis['label'], dis['vi']))
-                        summa+=dis['vi']
-                print('-'*44)
-                print('bond valence sum for {:s} ={: 3.2f}'.format(lab,summa)) 
-                print('-'*44,'\n'*2)                 
-                
+                        print(
+                            '{: 5.3f}        {:<5}    {: 3.2f}  '.format(
+                                dis['dist'], dis['label'], dis['vi']))
+                        summa += dis['vi']
+                print('-' * 44)
+                print('bond valence sum for {:s} ={: 3.2f}'.format(lab, summa))
+                print('-' * 44, '\n' * 2)
+
     @staticmethod
     def crys2spglib(x):
         x.__fill_cell()
-        numbers= [__type2A__(x.Asym_atoms[i]['type']) for i in x.Atoms_cell['label']] 
-        numbers=[pt_p(i,'Z') for i in numbers]
-        return  (x.basis.T, x.Atoms_cell['xyz'], numbers)   
+        numbers = [__type2A__(x.Asym_atoms[i]['type'])
+                   for i in x.Atoms_cell['label']]
+        numbers = [pt_p(i, 'Z') for i in numbers]
+        return (x.basis.T, x.Atoms_cell['xyz'], numbers)
 
     def find_primitive(self):
         self.__fill_cell()
-        cell= crystal.crys2spglib(self)
-        self.primitive= crystal.import_from(spglib.find_primitive(cell), format='spglib')
+        cell = crystal.crys2spglib(self)
+        self.primitive = crystal.import_from(
+            spglib.find_primitive(cell), format='spglib')
 
-        
     def makeP1(self):
         if hasattr(self, 'Atoms_cell'):
             pass
-        else: self.__fill_cell()
-        Asym={}
-        i=0
-        for lab,xyz in zip(self.Atoms_cell['label'],self.Atoms_cell['xyz']):
-            i+=1
-            sym=__type2A__(self.Asym_atoms[lab]['type'])
-            label=sym+str(i)
-            Asym[label]={'occ':self.Asym_atoms[lab]['occ'], 'x':xyz[0], 'y':xyz[1], 'z':xyz[2], 'type':self.Asym_atoms[lab]['type']}
+        else:
+            self.__fill_cell()
+        Asym = {}
+        i = 0
+        for lab, xyz in zip(self.Atoms_cell['label'], self.Atoms_cell['xyz']):
+            i += 1
+            sym = __type2A__(self.Asym_atoms[lab]['type'])
+            label = sym + str(i)
+            Asym[label] = {
+                'occ': self.Asym_atoms[lab]['occ'],
+                'x': xyz[0],
+                'y': xyz[1],
+                'z': xyz[2],
+                'type': self.Asym_atoms[lab]['type']}
         return crystal(Cell=self.Cell, Asym_atoms=Asym, SpaceGroup='P1')
-    
-        
-    
-        
+
     def BVSmap(self, cation, sampling, min_d=0.65, max_d=3.60, BVpars=None):
         """ cor.BVSmap('Cd', [20,20,20])
             BVpars {'S-2':[index], 'Te-2':[R0, b]} or 'soft'
 
         """
         ## utility functions#############################
-        giv_typ = lambda x: self.Asym_atoms[i]['type']
+        def giv_typ(x): return self.Asym_atoms[i]['type']
         ################################################
-        m_c=np.ceil(max_d/self.Cell[:3])*2+1
-        #print m_c
-        self.make_box( m=m_c, center=True)
+        m_c = np.ceil(max_d / self.Cell[:3]) * 2 + 1
+        # print m_c
+        self.make_box(m=m_c, center=True)
         # reduction on other atom to the minimum
-        # atoms far        
-        le=max_d/self.Cell[:3]
-        co=self.Atoms_cell['xyz']
-        xx= np.where((co[:,0]<le[0]+1) * (co[:,0]>-le[0]) * (co[:,1]<le[1]+1) * (co[:,1]>-le[1]) * (co[:,2]<le[2]+1) * (co[:,2]>-le[2]))
-        self.Atoms_cell['xyz']=self.Atoms_cell['xyz'][xx]
-        self.Atoms_cell['label']=np.array(self.Atoms_cell['label'])[xx]
-        #atoms cation removal
-        co=self.Atoms_cell['label']
-        xx=[i for i in range(len(co)) if not __type2A__(cation) in self.Atoms_cell['label'][i]] 
-        self.Atoms_cell['label']=self.Atoms_cell['label'][xx]
-        self.Atoms_cell['xyz']=self.Atoms_cell['xyz'][xx]          
+        # atoms far
+        le = max_d / self.Cell[:3]
+        co = self.Atoms_cell['xyz']
+        xx = np.where((co[:,
+                          0] < le[0] + 1) * (co[:,
+                                                0] > -le[0]) * (co[:,
+                                                                   1] < le[1] + 1) * (co[:,
+                                                                                         1] > -le[1]) * (co[:,
+                                                                                                            2] < le[2] + 1) * (co[:,
+                                                                                                                                  2] > -le[2]))
+        self.Atoms_cell['xyz'] = self.Atoms_cell['xyz'][xx]
+        self.Atoms_cell['label'] = np.array(self.Atoms_cell['label'])[xx]
+        # atoms cation removal
+        co = self.Atoms_cell['label']
+        xx = [i for i in range(len(co)) if not __type2A__(
+            cation) in self.Atoms_cell['label'][i]]
+        self.Atoms_cell['label'] = self.Atoms_cell['label'][xx]
+        self.Atoms_cell['xyz'] = self.Atoms_cell['xyz'][xx]
         #####################################################
-        
-        #Ask BV param
-        labels=[i for i in list(self.Asym_atoms.keys()) if not(__type2A__(cation) in i)]
-        BV_p=[]
+
+        # Ask BV param
+        labels = [
+            i for i in list(
+                self.Asym_atoms.keys()) if not(
+                __type2A__(cation) in i)]
+        BV_p = []
         if BVpars:
             if isinstance(BVpars, dict):
                 for i in labels:
                     if giv_typ(i) in list(BVpars.keys()):
-                        param=BVpars[giv_typ(i)]
-                        if len(param)==2:
+                        param = BVpars[giv_typ(i)]
+                        if len(param) == 2:
                             BV_p.append(param)
-                        elif len(param)==1:
-                            index=int(param[0])
+                        elif len(param) == 1:
+                            index = int(param[0])
                             BV_p.append([vbs[index]["Ro"], vbs[index]["B"]])
                         else:
-                           raise ValueError('pippo')
+                            raise ValueError('pippo')
                     else:
                         BV_p.append([0, 0])
 
-            elif BVpars=='soft':
+            elif BVpars == 'soft':
                 for i in labels:
-                    param=s_softBV(cation, giv_typ(i))
-                    BV_p.append([param[0],param[1]])
+                    param = s_softBV(cation, giv_typ(i))
+                    BV_p.append([param[0], param[1]])
             else:
                 raise ValueError('not clear param')
 
-
-
-
-
-
-
         else:
             for i in labels:
-                print("parameters available for {} and {}".format(cation, __type2A__(i)))
-                print("##"*24,'\n')
+                print(
+                    "parameters available for {} and {}".format(
+                        cation, __type2A__(i)))
+                print("##" * 24, '\n')
                 print("defined ox. states ")
-                print(vbs.search_bvp(cation, Anion=__type2A__(self.Asym_atoms[i]['type'])))
+                print(
+                    vbs.search_bvp(
+                        cation, Anion=__type2A__(
+                            self.Asym_atoms[i]['type'])))
                 print('write R0 and b or the index of an entry')
-                param  = input().split()                       
-                print("##"*24,'\n'*3)
-                if len(param)==2:
-                    R0 ,b = list(map(float, param))    
+                param = input().split()
+                print("##" * 24, '\n' * 3)
+                if len(param) == 2:
+                    R0, b = list(map(float, param))
                     BV_p.append([R0, b])
-                if len(param)==1:
-                    index=int(param[0])
+                if len(param) == 1:
+                    index = int(param[0])
                     BV_p.append([vbs[index]["Ro"], vbs[index]["B"]])
                 else:
                     BV_p.append([0, 0])
- 
+
         ##
-        BV_p=np.array(BV_p, dtype=np.double)
-        labels_n=np.array([labels.index(i) for i in  self.Atoms_cell['label']], dtype=np.int)
-        self.grid=MBV.BVM(self.basis, np.array(sampling, dtype=np.int), labels_n ,
-                          self.Atoms_cell['xyz'],   BV_p,   min_d,   max_d)
+        BV_p = np.array(BV_p, dtype=np.double)
+        labels_n = np.array([labels.index(i)
+                             for i in self.Atoms_cell['label']], dtype=np.int)
+        self.grid = MBV.BVM(
+            self.basis,
+            np.array(
+                sampling,
+                dtype=np.int),
+            labels_n,
+            self.Atoms_cell['xyz'],
+            BV_p,
+            min_d,
+            max_d)
         winsound.Beep(frequency, duration)
-                
-        
-                    
-                
-        #math.exp((R0-Ri)/B)                
-        
-        
-        #bonds=list()
-        #for i,atom in enumerate(location):
+
+        # math.exp((R0-Ri)/B)
+
+        # bonds=list()
+        # for i,atom in enumerate(location):
         #    vdist=(location- tile(atom,(len(molecule),1)))**2
         #    vdist= sqrt(sum(vdist, axis=1))
         #    for j, dist in enumerate(vdist[i:]):
@@ -602,4 +666,4 @@ class crystal(object):
         #               continue
         #        at_type=frozenset((el_i, el_j))
         #        bonds.append({'bond_l':dist, 'elems':at_type, 'atoms':[i,i+j]})
-        #return bonds  
+        # return bonds
