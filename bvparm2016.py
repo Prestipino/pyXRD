@@ -3259,7 +3259,8 @@ valence_param =vbs_database([{"Cat":item[0],"VCat":int(item[1]),"Anion":item[2],
 
 del  lines, lista
 
-if __name__ == "__main__":
+
+def bvs_calc():
     print("Bond valence method Sum calculator")
     while True:
         formula  = input("\n######################################\nWrite Cation and Anion without charge"+\
@@ -3287,4 +3288,10 @@ if __name__ == "__main__":
             if formula.split()[0]=="V":
                 redlist.cal_BV(int(formula.split()[1]),float(formula.split()[2]))    
             print("\n")    
-        if formula =="quit": break           
+        if formula =="quit": break 
+    return              
+
+
+
+if __name__ == "__main__":
+    bvs_calc()         

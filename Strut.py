@@ -129,15 +129,6 @@ class CMolec(list):
         bonds = search_bond(self, min_d=min_d, max_d=max_d, cov=cov_r)
         self.bonds = [Bond(**i) for i in bonds]
 
-#    def to__pybel(self, bond=True):
-#        '''convert to pybel addinf a pybel properties
-#        '''
-#        if self.bonds:
-#            self.pybel_m = json_to_pybel(
-#                {'atoms': self, 'bonds': self.bonds}, infer_bonds=bond)
-#        else:
-#            self.pybel_m = json_to_pybel({'atoms': self}, infer_bonds=bond)
-
     def export(self, filename=None, format='moldraw'):
         ''' convert to 
         moldraw
@@ -297,9 +288,6 @@ class CMolec(list):
                         break
                 j_son['bonds'] = [Bond(i) for i in bonds]
 
-        ######## other cases #######################################################################################
-#        else:                                                    ##################################################
-#            j_son = eval(generate(data, format=format))          ##################################################
         if format == 'pybel':
             self.pybel_m = data
         if refresh:
@@ -428,7 +416,14 @@ class CMolec(list):
         delete_list = [j for j in self if j['element'] in subset]
         return delete_list
 
-
+#    def to__pybel(self, bond=True):
+#        '''convert to pybel addinf a pybel properties
+#        '''
+#        if self.bonds:
+#            self.pybel_m = json_to_pybel(
+#                {'atoms': self, 'bonds': self.bonds}, infer_bonds=bond)
+#        else:
+#            self.pybel_m = json_to_pybel({'atoms': self}, infer_bonds=bond)
 def distance(vector):
     return tr.vector_norm(vector)
 
@@ -450,3 +445,5 @@ def search_bond(molecule, min_d=0.65, max_d=3.20, cov=True):
             bonds.append(
                 {'bond_l': dist, 'elems': at_type, 'atoms': [i, i + j]})
     return bonds
+
+
