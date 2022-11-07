@@ -1,5 +1,6 @@
 """
    parsed for different format
+   raw inspirwed from https://github.com/wojdyr/xylib
 """
 import numpy as np
 import os
@@ -11,18 +12,18 @@ def calc_x(start, step, data):
 
 
 def read_id22(self, filename):
-
     if isinstance(filename, str):
         self.data = []
         # print(info, datas.shape)
-        self.data.append({'array': np.loadtxt(filename),
+        self.data.append({'array': np.loadtxt(filename, comments=['#', '!']),
                           'info': {'index': 0,
                                    'UNIT': 'cps'}})
     elif isinstance(filename, list):
         self.data = []
         for i, file_names in enumerate(filename):
             try:
-                self.data.append({'array': np.loadtxt(file_names),
+                self.data.append({'array': np.loadtxt(file_names, 
+                                                      comments=['#', '!']),
                                   'info': {'index': i,
                                            'UNIT': 'cps'}})
             except Exception as excep:

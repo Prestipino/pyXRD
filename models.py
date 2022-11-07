@@ -3,43 +3,45 @@
 
 # import sys
 import glob
-# import shutil
+import shutil
 import numpy as np
 import re
 import os
 import subprocess
-
+import time
+import matplotlib.pyplot as plt
 
 # ####### PCR Names
 sample = 'fit_lpf109'  # only stuff to touch
-Spg = 'SPGR  P -4 3 n'
+Spg = 'P -4 3 n'
 Biso = 0.5
 
 
 # to limit to the first n models_filename = glob.glob("models/M*.txt")[:2]
-#models_filename = glob.glob("../gen_model/M*.pcr")
-#pcr_ener_files = ['ener0.pcr', 'ener1.pcr', 'ener2.pcr', 'ener3.pcr']
+# models_filename = glob.glob("../gen_model/M*.pcr")
+# pcr_ener_files = ['ener0.pcr', 'ener1.pcr', 'ener2.pcr', 'ener3.pcr']
 
 ######################
 
 
-def __extra_del_phasexyz(lines, extract=True, Sing_Cry=False):
+def __extra_del_phasexyz(lines, extract=True):
     '''
     REmove from a pcr files the block of lines
     describing the crystal structure  of the first phase
     Args:
-       lines (list):list of the lines of a pcr file 
+       lines (list):list of the lines of a pcr file
        extract (bool): if true extract XYZ model
-                       if false extract the rest of the file 
+                       if false extract the rest of the file
     '''
     texto = []
     zcond = 0
-    end_cond = '!-------> Scale' if Sing_Cry else '!-------> Profile'
+    end_cond1 = '!-------> Scale'
+    end_cond2 = '!-------> Profile'
 
     for i in lines:
         if '!  Data for PHASE number:   1' in i:
             zcond = 1
-        if end_cond in i:
+        if (end_cond1 in i) or (end_cond2 in i):
             if extract:
                 break
             else:
@@ -51,184 +53,164 @@ def __extra_del_phasexyz(lines, extract=True, Sing_Cry=False):
     return texto
 
 
-def run_models(models_filename=models_filename,
-               pcr_ener_files=pcr_ener_files,
-               command=None, Sing_Cry=False, stepwait=3):
+def run_models(models, pcr_ener_files, sample,
+               newfile=True, pcr_options={},
+               commands=None, Sing_Cry=False,
+               stepwait=3, stepprint=50,
+               force=False, Terminate=True,
+               postSi=f'{"0   "*4}\n{" "*18}{"0.00     "*5}',
+               postAt=f'{"0   "*4}\n{" "*18}{"0.00     "*5}'):
     '''
        run fullprof for several structurasl models fro several energy
        input:
-          models_filename: list with all the
-                           filenames from wich extrat the tructural model
-          pcr_ener_files= list with all the
-                           filenames from wich insert the tructural model
-          command string to insert in command mode for fullprof
-          stepwait = numper of paralel process
-    '''
-    # number of energy
-    n_ener = len(pcr_ener_files)
-    # utility couners for the wait
-    i = 0
-
-    if isinstance(models_filename, str):
-        models_filename = [models_filename]
-
-    def o_name(namex):
-        return os.path.basename(namex)[:-4]
-
-    # import base pcr
-    pcr_ener_inp = []
-    inser_in_pcr = []
-    for pcr in pcr_ener_files:
-        with open(pcr) as pcr_i:
-            pcrall = pcr_i.readlines()
-        for line_n in range(len(pcrall)):
-            if '!  Data for PHASE number:   1' in pcrall[line_n]:
-                inser_in_pcr.append(line_n)
-        pcrall = __extra_del_phasexyz(pcrall, extract=False, Sing_Cry=Sing_Cry)
-        pcr_ener_inp.append(pcrall)
-    #
-
-    # start of the cycle
-    for mod_name in models_filename:
-        print('# %s' % mod_name)
-        for ener in range(n_ener):
-            # dire = output model directory
-            dire = os.path.join(sample, o_name(mod_name))
-            pcrname = os.path.join(dire,
-                                   o_name(mod_name) + pcr_ener_files[ener])
-
-            # create the dire directory if not existe
-            if not os.path.exists(dire):
-                os.mkdir(dire)
-
-            # impoer xyz model
-            with open(mod_name) as mod_i:
-                modxyz = __extra_del_phasexyz(mod_i.readlines(), True)
-                #Check if is a new format of pcr 
-                if sum([1 if '!Contributions' in ie else 0 for ie in modxyz]):
-                    pass
-                else:
-                    nat = modxyz[5].split()[0]
-                    modxyz = __convert_oldxyz2new(modxyz, nat)
-
-                if Sing_Cry:
-                    modxyz[9]=   '   4   0    0      0      0\n'
-
-                if command:
-                    modxyz[2] = command
-
-
-
-            # import base pcr
-            pcrall = pcr_ener_inp[ener][:]
-
-            pcrall.insert(inser_in_pcr[ener], ''.join(modxyz))
-            pcrall[0] = 'COMM  %s %s' % (
-                os.path.basename(mod_name)[:-4], pcrall[0][4:])
-            with open(pcrname, 'w') as pcr_i:
-                pcr_i.writelines(pcrall)
-            # launch fullprof
-            if i == 0:
-               p = subprocess.Popen(['fp2k.exe', pcrname],
-                              creationflags = subprocess.CREATE_NO_WINDOW)
-            else :
-               xxx=subprocess.Popen(['fp2k.exe', pcrname],
-                              creationflags = subprocess.CREATE_NO_WINDOW).pid
-            i += 1
-            if not(i % stepwait):
-                p.wait()
-                i=0
-
-    return
-
-
-def run_models2(models, pcr_ener_files,
-                commands=None, Sing_Cry=False,
-                Biso=0.5, stepwait=3):
-    '''
-       run fullprof for several structurasl models fro several energy
-       input:
-          models_filename: list with all the
-                           filenames from wich extrat the tructural model
+          models: models object
           pcr_ener_files= list with all the
                            filenames in which insert the tructural model
+          sample = directory name
+          newfile = if false it just run again on the file
           command string to insert in command mode for fullprof
           stepwait = numper of paralel process
-    '''
-    n_ener = len(pcr_ener_files)
-    # utility couners for the wait
-    i = 0
 
+          force = overwrite the directory
+          Terminate = force to terminate
+    '''
+
+    n_ener = len(pcr_ener_files)
     # import base pcr
     # pcr_ener_inp = list of list contining the pcr lines
-    #                 apart from struture of phase 1
+    #                apart from struture of phase 1
     # inser_in_pcr = list of the line numbers where insert phase 1 info
     pcr_ener_inp = []
     inser_in_pcr = []
     for pcr in pcr_ener_files:
         with open(pcr) as pcr_i:
             pcr_all = pcr_i.readlines()
-            pcr_ener_inp.append(__extra_del_phasexyz(pcr_all, extract=False,
-                                                     Sing_Cry=Sing_Cry))
+            pcr_ener_inp.append(__extra_del_phasexyz(pcr_all, extract=False))
         for line_n, line in enumerate(pcr_all):
             if '!  Data for PHASE number:   1' in line:
                 inser_in_pcr.append(line_n)
     pass
 
-    # start of the cycle
-    for mod_i in range(len(models)):
-        print('# %d' % mod_i)
-        for ener in range(n_ener):
-            # dire = output model directory
-            dire = os.path.join(sample, f'mod{mod_i:05d}')
-            pcrname = os.path.join(dire, f'm{i:04d}{pcr_ener_files[ener]:s}')
+    # create directory
+    try:
+        os.mkdir(sample)
+    except FileExistsError as zz:
+        if not(newfile):
+            pass
+        elif force:
+            shutil.rmtree(sample)
+            os.mkdir(sample)
+        else:
+            raise FileExistsError(zz)
 
-            # create the dire directory if not existe
-            if not os.path.exists(dire):
-                os.mkdir(dire)
+    # utility counters for the wait
+    mod_t = list(range(len(models)))
+    old_len = len(mod_t)
+    while len(mod_t) > 0:
+        i = 0   # used for parallization
+        wait = 0.5
+        # start of the cycle
+        for mod_i in mod_t:
+            for ener in range(n_ener):
+                # dire = output model directory
+                dire = os.path.join(sample, f'mod{mod_i:05d}')
+                pcrname = os.path.join(dire, f'm{mod_i:05d}{pcr_ener_files[ener]:s}')
 
-            # import xyz model
-            xyz = models._obji2pcrxyz(mod_i, Spg=Spg, patterns=1, Npr=5,
-                                      Biso=Biso, sincry=Sing_Cry,
-                                      commands=commands, title=f'm{i:04d}')
+                # create the dire directory if not existe
+                if not os.path.exists(dire):
+                    os.mkdir(dire)
+
+                if newfile:
+                    for line in pcr_ener_inp[ener]:
+                        if 'NPATT' in line:
+                            n_pattern = int(line.split()[1])
+                            break
+                    else:
+                        n_pattern = 1
+
+                    # import xyz model
+                    xyz = models._objipcrxyz(mod_i, patterns=n_pattern,
+                                             sincry=Sing_Cry,
+                                             commands=commands,
+                                             title=f'm{i:04d}',
+                                             Rmub=2,
+                                             postSi=postSi,
+                                             postAt=postAt,
+                                             **pcr_options)
+
+                    # import base pcr
+                    pcrall = pcr_ener_inp[ener][:]
+                    pcrall.insert(inser_in_pcr[ener], ''.join(xyz))
+                    pcrall[0] = 'COMM  %s %s' % (f'mod{mod_i:05d}',
+                                                 pcrall[0][4:])
+
+                    try:
+                        with open(pcrname, 'w') as pcr_i:
+                            pcr_i.writelines(pcrall)
+                    except PermissionError as PE:
+                        print(PE)
+                        continue
+
+                # launch fullprof
+                # CREATE_NEW_PROCESS_GROUP = 0x00000200
+                DETACHED_PROCESS = 0x00000008
+                HIGH_PRIORITY_CLASS = 0x00000080
+                # CREATE_PROTECTED_PROCESS = 0x00040000
+
+                a = subprocess.Popen(['fp2k.exe', pcrname], creationflags=DETACHED_PROCESS | HIGH_PRIORITY_CLASS)
+
+                i += 1
+                if not(i % stepwait):
+                    a.wait()
+
+                if not(i % stepprint):
+                    print(f'# {mod_i:d}')
+                    time.sleep(0.2)
+
+        a.wait()
+        time.sleep(0.2)
+        good = glob.glob(f'.\\{sample:s}\\**\\*.fst')
+        good = set(map(lambda x: int(os.path.basename(x)[1:6]), good))
+        mod_t = [i for i in mod_t if i not in good]
+
+        # check divergence
+        for i in mod_t:
+            outstr = f'mod{i:05d}\\m{i:05d}*.out'
+            outfile = glob.glob(f'.\\{sample:s}\\{outstr:s}')[0]
+            Divergence = checkDivergence(outfile)
+            if Divergence:
+                mod_t.remove(i)
+                print(i, Divergence)
+
+        if len(mod_t) == 0:
+            sum_RF, bad = read_allsum(sample,
+                                      Sing_Cry,
+                                      p_bad=True,
+                                      multi=n_ener > 1)
+
+            if bad:
+                mod_t = bad
+                if Terminate:
+                    continue
+                else:
+                    return
+            RF_name = '_RF2' if Sing_Cry else '_Rbragg'
+            models.values_set(sum_RF, sample + RF_name)
+            models.values_set(read_allsum(sample, Sing_Cry, chi=True),
+                              sample + '_chi2')
+            return
+        print(len(mod_t))
+        if old_len == len(mod_t):
+            print(mod_t)
+            wait *= 2
+            if wait > 5:
+                return
+        time.sleep(wait)
+        old_len = len(mod_t)
+    print('End')
 
 
-
-
-            # import base pcr
-            pcrall = pcr_ener_inp[ener][:]
-
-            pcrall.insert(inser_in_pcr[ener], ''.join(xyz))
-            pcrall[0] = 'COMM  %s %s' % (
-                os.path.basename(mod_name)[:-4], pcrall[0][4:])
-            with open(pcrname, 'w') as pcr_i:
-                pcr_i.writelines(pcrall)
-            # launch fullprof
-            if i == 0:
-               p = subprocess.Popen(['fp2k.exe', pcrname],
-                              creationflags = subprocess.CREATE_NO_WINDOW)
-            else :
-               xxx=subprocess.Popen(['fp2k.exe', pcrname],
-                              creationflags = subprocess.CREATE_NO_WINDOW).pid
-            i += 1
-            if not(i % stepwait):
-                p.wait()
-                i=0
-
-
-def gen_names(filebase, ext, start, stop, step):
-    nam = []
-    for i in np.arange(start, stop, step):
-        nam.append("%s%0.2d.pcr" % (filebase, i))
-    return nam
-
-
-def fp2krun(filebase):
-    for i in filebase:
-        os.system("fp2k %s" % i)
-    return
-
-
+# creationflags=subprocess.DETACHED_PROCESS
 def read_hkl(filename, nline=30):  # nline =number of reflection read
     """
     read hkl from hkl(format 4) from hkl files
@@ -280,61 +262,89 @@ def extract_hkl(hklmod, hkl, ener):
         hkl_l.append(hklmod[mod][ener][hkl])
     return np.vstack((mod_l, hkl_l))
 
-
-def __convert_oldxyz2new(xyz, nat):
-    new_pcr_header = ['!Nat Dis Ang Jbt Isy Str Furth        ATZ     Nvk More\n',
-                      '  0   0   0   0   0   0       3160.9280   0   0\n',
-                      '!Contributions (0/1) of this phase to the  1 patterns\n',
-                      ' 1\n',
-                      '!Irf Npr Jtyp  Nsp_Ref Ph_Shift for Pattern#  1\n',
-                      '   0   5    0      0      0\n',
-                      '! Pr1    Pr2    Pr3   Brind.   Rmua   Rmub   Rmuc     for Pattern#  1\n',
-                      '  0.000  0.000  1.000  1.000  0.000  0.000  0.000\n']
-    nat = xyz[5].split()[0]
-    del xyz[4]
-    del xyz[4]
-    new_pcr_header[1] = ' %s %s' % (nat, new_pcr_header[1])
-    for i in reversed(new_pcr_header):
-        xyz.insert(4, i)
-    return xyz
-
-
 ##########################################################################
-def read_allsum(splity='ener', chi=False):
+def read_phase1_parall(sample):
+    sum_mod = []
+    for file in glob.glob(f'.\\{sample:s}\\**\\*.out'):
+        sum_mod.append(read_phase1par(file))
+    return sum_mod
+
+
+def read_phase1par(out_file, buf_size=8192):
+    parameters={}
+    with open(out_file) as fh:
+        segment = None
+        offset = 0
+        fh.seek(0, os.SEEK_END)
+        file_size = remaining_size = fh.tell()
+        while remaining_size > 0:
+            offset = min(file_size, offset + buf_size)
+            fh.seek(file_size - offset)
+            buffer = fh.read(min(remaining_size, buf_size))
+            remaining_size -= buf_size
+            cond1 = 'SYMBOLIC NAMES' in buffer
+            cond2 = 'AND SIGMA' in buffer
+            if cond1 or cond2:
+                fh.seek(file_size - offset)
+                break
+        while True:
+            line = fh.readline()
+
+            if '>  Parameter number' in line:
+                pa = re.split(r'[ (]{1,}', line)
+                parameters[pa[6]] = [float(pa[7]), float(pa[9])]
+            if '=> Number of bytes' in line:
+                break
+    return parameters
+
+############################################################################
+def read_allsum(sample, Sing_Cry=0, chi=False, p_bad=False, multi=False):
     '''
     readl all  the hkl files for all the energy
 
-    is based on the idea that files are called modNNNenerN.hkl
+    could read multi run (multi=True) in such case 
+    is based on the idea that files are called modNNN{splity:s}N.sum
+
+    one multipatternpcr
     returns a dictionary
     {model:{energy:{khl:f2}}}
 
     '''
-    bad=[]
-    sum_mod = {}
-    for r, d, f in os.walk(sample):
-        for file in f:
-            if '.sum' in file:
-                mod, ener = file.split(splity)
-                mod = int(re.search(r'[A-Za-z_\-]*(\d{1,4})', mod)[1])
-                try:
-                    if ener[0]=='.':
-                        sum_mod[mod] = read_sumSC(os.path.join(r, file), pr=0)
-                        continue
-                    elif ener[0] in [str(i) for i in range(10)]:    
-                        ener = int(ener[0])
-                    if mod in list(sum_mod.keys()):
-                        sum_mod[mod][ener] = read_sum(os.path.join(r, file), pr=0, chi=chi)
-                    else:
-                        sum_mod[mod] = {ener: read_sum(os.path.join(r, file), pr=0, chi=chi)}
-                        continue
-                except Exception as E:
-                    print(file)
-                    print(E)
-                    bad.append(mod-1)
-                    break
-    assert len(sum_mod)>0, 'empty database'
-    if len(bad)>0:
-    	print(repr(bad))
+    bad = []
+    sum_mod = []
+    for file in glob.glob(f'.\\{sample:s}\\**\\*.sum'):
+        f_bname = os.path.basename(file)
+        mod = int(f_bname[1:6])
+        try:
+            if multi:
+                ener = int(f_bname[-5:-4])
+                if mod < len(sum_mod):
+
+                    sum_mod[mod][ener] = read_sum(file, pr=0, chi=chi)
+                else:
+                    sum_mod.append({ener: read_sum(file, pr=0, chi=chi)})
+
+            if Sing_Cry:
+                sum_mod.append(read_sumSC(file, pr=0, chi=chi))
+
+            else:
+                rr = read_sumMP(file, pr=False, chi=chi)
+                if rr == []:
+                    raise ValueError
+                    #rr = [np.NaN] * len(sum_mod[-1])
+                sum_mod.append(rr)
+
+        except Exception:
+            if checkDivergence(file[:-3] + 'out'):
+                sum_mod.append(None)
+            else:
+                bad.append(mod)
+    # if len(bad) > 0:
+        # print(len(bad), repr(bad))
+    assert len(sum_mod) > 0, 'empty database'
+    if p_bad:
+
+        return sum_mod, bad
     return sum_mod
 
 
@@ -418,40 +428,159 @@ class outfile():
         return
 
 
+def checkDivergence(outfile):
+    with open(outfile) as out:
+        outlines = out.readlines()[-20:]
+    for line in outlines:
+        if 'Strong DIVERGENCE' in line:
+            return 'Strong DIVERGENCE'
+        if 'Singular matrix!!' in line:
+            return 'Singular matrix!!'
+        if 'WARNING, Scale factor <0, fixed to 1.E-10' in line:
+            return 'WARNING, Scale factor <0, fixed to 1.E-10'
+    else:
+        return False
+
+def read_sumMP(sum_file, pr=True, chi=False):
+    '''read multipattern out
+        pr if 1 print
+    '''
+    with open(sum_file) as ourfile:
+        sumlines = ourfile.readlines()
+    Rbragg = []
+    chi2 = np.NaN
+    for sum_line in sumlines:
+        a = re.search(r'=.*Bragg R-factor: * (\d{1,3}\.\d*).*V', sum_line)
+        if a is None:
+            a = re.search(r'RF2 -factor : *(\d{1,2}\.\d*).*', sum_line)
+            b = re.search(r'RF2 -factor : *(NaN).*', sum_line)
+            if b is not None:
+                Rbragg.append(None)
+                continue
+        if a is not None:
+            if pr:
+                print(a.group())
+            Rbragg.append(float(a.group(1)))
+            continue
+        a = re.search(r'.*weigthed Chi2 \(Brag.*\s* (\d{1,5}\.\d*E?\+?\d*).*', sum_line)
+        if a is not None:
+            if pr:
+                print('=>', a.group(), a.group(1))
+            chi2 = float(a.group(1))
+            if chi:
+                break
+            continue
+
+    if chi:
+        return chi2
+    else:
+        return Rbragg
+
 def read_sum(sum_file, pr=True, chi=False):
     '''pr if 1 print
     '''
     with open(sum_file) as ourfile:
         sumlines = ourfile.readlines()
     for sum_line in sumlines:
-        a = re.search(r'=.*Bragg R-factor: *(\d{1,2}\.\d*).*V', sum_line)
+        a = re.search(r'=.*Bragg R-factor: *(\d{1,3}\.\d*).*V', sum_line)
         if a is not None:
             if pr:
                print(a.group())
             Rbragg = float(a.group(1))
-        a = re.search(r'Reduced Chi-square :\s*(\d{1,2}\.\d*).*', sum_line)
+        a = re.search(r'Reduced Chi-square :\s*(\d{1,3}\.\d*).*', sum_line)
         if a is not None:
             if pr:
                 print('=>', a.group())
             chi2 = float(a.group(1))
     if chi:
-        return  chi2
+        return chi2
     else:
         return Rbragg
 
-
-def read_sumSC(sum_file, pr=True):
+def read_sumSC(sum_file, pr=True, chi=False):
     with open(sum_file) as ourfile:
         sumlines = ourfile.readlines()
     for sum_line in sumlines:
         a = re.search(r'RF2 -factor : *(\d{1,2}\.\d*).*', sum_line)
+        b = re.search(r'RF2 -factor : *(NaN).*', sum_line)
         if a is not None:
             if pr:
-               print(a.group())
-            Rbragg = float(a.group(1))
+                print(a.group())
+            RF2 = float(a.group(1))
+        if b is not None:
+            RF2 = None
+
         a = re.search(r'Chi2\(Intens\): *(\d{1,2}\.\d*).*', sum_line)
+        b = re.search(r'Chi2\(Intens\): *(NaN).*', sum_line)
         if a is not None:
             if pr:
                 print('=>', a.group())
             chi2 = float(a.group(1))
-    return Rbragg   #, chi2
+        if b is not None:
+            chi2 = None
+
+    if chi:
+        return chi2
+    else:
+        return RF2
+
+def scatter_site(atom, site, ReSC, Mod_str, label=''):
+    """ hl =high limit for test
+    """
+    plt.xlabel('model nb.')
+    plt.title('%s %s' % (label, site))
+    if isinstance(ReSC, str):
+        plt.ylabel(ReSC)
+        ReSC = getattr(Mod_str, ReSC)
+    ReSC = np.array(ReSC)
+    for i in range(Mod_str.wiks[site]['m'] + 1):
+        cond = '== %d' % i  # Define condition
+        Mod_i = Mod_str.filter(site, atom, cond, N=1)
+        i_legend = '%s %s:%d' % (atom, site, i)  # Define label
+        if len(Mod_i) > 0:
+            plt.scatter(Mod_i, ReSC[Mod_i], marker='s', label=i_legend)
+    plt.legend()
+
+
+
+
+
+
+
+
+
+
+
+
+def reverse_readline(filename, buf_size=8192):
+    import os
+    """A generator that returns the lines of a file in reverse order"""
+    with open(filename) as fh:
+        segment = None
+        offset = 0
+        fh.seek(0, os.SEEK_END)
+        file_size = remaining_size = fh.tell()
+        while remaining_size > 0:
+            offset = min(file_size, offset + buf_size)
+            fh.seek(file_size - offset)
+            buffer = fh.read(min(remaining_size, buf_size))
+            remaining_size -= buf_size
+            lines = buffer.split('\n')
+            # The first line of the buffer is probably not a complete line so
+            # we'll save it and append it to the last line of the next buffer
+            # we read
+            if segment is not None:
+                # If the previous chunk starts right from the beginning of line
+                # do not concat the segment to the last line of new chunk.
+                # Instead, yield the segment first 
+                if buffer[-1] != '\n':
+                    lines[-1] += segment
+                else:
+                    yield segment
+            segment = lines[0]
+            for index in range(len(lines) - 1, 0, -1):
+                if lines[index]:
+                    yield lines[index]
+        # Don't yield None if the file was empty
+        if segment is not None:
+            yield segment

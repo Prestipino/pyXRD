@@ -92,3 +92,10 @@ def Bragg_d(T2, WL=1.5406, Energy=False):
         WL *= 1e-10
     return WL / np.sin(np.radians(T2 / 2)) * 0.5
 
+
+def T2new_lambda(T2, WLi=1.5405981E-10, WLf=1.5405981E-10):
+    if WLi > 1e-3:
+        WLi *= 1e-10
+    if WLf > 1e-3:
+        WLf *= 1e-10
+    return 2 * np.degrees(np.arcsin(np.sin(np.radians(T2) / 2.0) * WLf / WLi))

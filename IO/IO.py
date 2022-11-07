@@ -184,10 +184,11 @@ class XRDdata(np.ndarray):
         return self._err
 
     def __cal_err(self, y, time=None):
-        if time:
-            return np.sqrt(y) / np.sqrt(time)
-        else:
+        if time is None:
             return np.sqrt(y)
+        else:
+            return np.sqrt(y) / np.sqrt(time)
+
 
     @err.setter
     def err(self, val):
@@ -224,6 +225,9 @@ class XRDfile(object):
     available format:
         by format keyword:
             'datILL'
+            'datID22'
+            'XY'
+            'XYE'
         by extension:
             brucker raw V3 V4
             UDX
@@ -235,10 +239,10 @@ class XRDfile(object):
         self.debug = debug
         self.info = {}
         if format:
-            if format == 'datILL':
+            if format.upper() == 'DATILL':
                 read_D1B(self, filename)
                 self.data = [XRDdata(i['array'], i['info']) for i in self.data]
-            if format == 'datID22':
+            if format.upper() in ['DATID22', 'XY', 'XYE']:
                 read_id22(self, filename)
                 self.data = [XRDdata(i['array'], i['info']) for i in self.data]
         elif filename:
@@ -268,14 +272,14 @@ class XRDfile(object):
                         self._read_UDX(filename)
             elif filename[-3:].upper() == 'RAW':
                 print('reading as RAW\n')
-                try:
-                    read_raw(self, filename)
-                    self.data = [XRDdata(i['array'],
-                                         i['info']) for i in self.data]
-                except Exception as error:
-                    print('impossible to open as RAW', error)
-                    if debug:
-                        read_raw(self, filename)
+                #try:
+                read_raw(self, filename)
+                self.data = [XRDdata(i['array'],
+                                     i['info']) for i in self.data]
+                # except Exception as error:
+                #     print('impossible to open as RAW', error)
+                #     if debug:
+                #         read_raw(self, filename)
             else:
                 print('unknown format')
 
@@ -374,6 +378,7 @@ class XRDfile(object):
            Export available format
            'xy' simple xy without comments
            'FPxy' xy at the way of FullProf
+           'block'  datablock of y
            info precise if an info must be used in the name
            prec is precision of the info
            ex.
@@ -385,6 +390,9 @@ class XRDfile(object):
             self.data[0].export(root, Format=Format, info=info, prec=prec)
             return
         width = len(str(len(self.data) - 1))
+        if Format == 'block':
+            data = np.vstack([i.cps for i in self.data])
+            np.savetxt(root,data)
         for j, i in enumerate(self.data):
             if Format == 'FPxy':
                 name = '{:s}-{:d}'.format(root, j)
@@ -437,19 +445,21 @@ class XRDfile(object):
         if log:
             data = np.log(data)
         x = self.data[0].x
-        y = [i.info[info] for i in self.data]
+        y = [i.info[info] for i in self.data[start:stop]]
         plt.imshow(data, aspect='auto', extent=(
             x[0], x[-1], y[0], y[-1]), **keyargs)
         plt.xlabel(r'2$\theta$ ($\degree$)')
         plt.ylabel(info)
 
-    def print_info(self, info):
+    def get_info(self, info):
         '''print a scan info as function of the scan number
         '''
         x = [i.info['index'] for i in self.data]
         y = [float(i.info[info]) for i in self.data]
         for i in zip(x, y):
             print(i)
+        return y
+
 
     def merge(self, slicei=None, plot=True, output=False):
         '''merge a set of scan
@@ -524,14 +534,14 @@ def merge_XRD(slicei, plot=True):
         d_inf.info['UNIT'] = 'counts'
 
     else:
-        d_inf.info['x_max'] = np.round(max([i.x[-1] for i in slicei]), 7)
-        d_inf.info['START'] = np.round(min([i.x[0] for i in slicei]), 7)
-        d_inf.info['STEPSIZE'] = max([i.info['STEPSIZE'] for i in slicei])
-        d_inf.info['STEPSIZE'] = np.round(d_inf.info['STEPSIZE'], 7)
+        d_inf['x_max'] = np.round(max([i.x[-1] for i in slicei]), 7)
+        d_inf['START'] = np.round(min([i.x[0] for i in slicei]), 7)
+        d_inf['STEPSIZE'] = max([i.info['STEPSIZE'] for i in slicei])
+        d_inf['STEPSIZE'] = np.round(d_inf['STEPSIZE'], 7)
 
-        x = np.arange(d_inf.info['START'],
-                      d_inf.info['x_max'] + d_inf.info['STEPSIZE'] / 2,
-                      d_inf.info['STEPSIZE'])
+        x = np.arange(d_inf['START'],
+                      d_inf['x_max'] + d_inf['STEPSIZE'] / 2,
+                      d_inf['STEPSIZE'])
 
         y, time = np.zeros((2, *x.shape))
 
@@ -541,7 +551,7 @@ def merge_XRD(slicei, plot=True):
             y += np.where(j_y > -1, j_y, 0)
 
             time += np.where(j_y > -1, j.info['STEPTIME'], 0)
-        d_inf.info['UNIT'] = 'cps'
+        d_inf['UNIT'] = 'cps'
 
         while True:
             if time[-1] == 0:
@@ -551,15 +561,15 @@ def merge_XRD(slicei, plot=True):
             else:
                 break
 
-        d_inf.info['STEPTIME'] = time
+        d_inf['STEPTIME'] = time
         y /= time
 
     merged = XRDdata(np.vstack((x, y)).T, info=d_inf)
 
     if plot:
         for j, i in enumerate(slicei):
-            plt.plot(i.x, i.y, label=str(j))
-        plt.plot(merged.x, merged.y, '.-')
+            plt.plot(i.x, i.y/i.info['STEPTIME'], label=str(j))
+        plt.plot(merged.x, merged.y+max(merged.y), '.-')
 
     return merged
 

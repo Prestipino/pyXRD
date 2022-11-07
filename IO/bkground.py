@@ -106,6 +106,8 @@ class spline_bkg:
             pass
         else:
             self.data = np.vstack([self.data, np.sqrt(self.data[1])])
+        #default smooting
+        self._s=None
         self.plotter()
 
     def plotter(self):
@@ -147,19 +149,26 @@ class spline_bkg:
             self.polyl.set_ydata(ypoly)
             plt.draw()
             if len(xpoly) > 3:
-                submit()
+                self.__submit()
         # cid = fig.canvas.mpl_connect('button_press_event', onclick)
 
-        def submit():
-            xpoly = self.polyl.get_xdata()
-            ypoly = self.polyl.get_ydata()
-            self.out = UnivariateSpline(xpoly, ypoly)
-            self.b.set_ydata(self.out(self.data[0]))
-            self.b.set_xdata(self.data[0])
-            self.ax.draw_artist(self.b)
-            return
-
         self.fig.canvas.mpl_connect('button_press_event', onpick)
+
+    def __submit(self):
+        xpoly = self.polyl.get_xdata()
+        ypoly = self.polyl.get_ydata()
+        self.out = UnivariateSpline(xpoly, ypoly, s=self._s)
+        self.b.set_ydata(self.out(self.data[0]))
+        self.b.set_xdata(self.data[0])
+        self.ax.draw_artist(self.b)
+        return
+
+    def set_smooting(self, s=None):
+        """s=0 no smooting
+           s=None default
+        """
+        self._s = s
+        self.__submit()
 
     def get_signal(self):
         bkg = self.out(self.data[0])

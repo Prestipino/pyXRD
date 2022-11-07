@@ -12,6 +12,10 @@ atomic_weigh    dict       Atomic weight of atoms  uma
 bond_distances  dict       bond distance           Angstrom
 """
 
+from Dans_Diffraction import functions_crystallography as crys_tool
+
+
+
 def pt_p(atom, property):
     """available property
        'At_w'    : atomic weight  
@@ -161,9 +165,6 @@ pt_prop ={'H'  : {'Z': 1, 'At_w': 1.0079, 'cov_r': 0.31, 'PauliX': 2.2},
           'Np' : {'Z': 93, 'At_w': 237, 'cov_r': 1.9, 'PauliX': 1.36},
           'Pu' : {'Z': 94, 'At_w': 244, 'cov_r': 1.87, 'PauliX': 1.28},
           'Am' : {'Z': 95, 'At_w': 243, 'cov_r': 1.8, 'PauliX': 1.13},}
-  
-
-
 
 Common_OxStates =   [(None),
                      ( -1 ,  1 ,  0 ,  0 ,  0 ,  0 ,  0 ,  0 ),
@@ -295,12 +296,7 @@ def e_conf(ne):
            old = '{:s}{:s}{:d} '.format(old,i,ep[i[-1]])
         else:
            return   '{:s}{:s}{:d} '.format(old,i,ep[i[-1]]+ne)
-        
-                    
-
-
-
-                
+             
 QN_Transition = ["K","L1","L2","L3"]
 Transition =	[ {"K": "1s"},	{"L1": "2s"},	{"L2": "2p1/2"},	{"L3": "2p3/2"},	{"M1": "3s"},	{"M2": "3p1/2"},	{"M3": "3p3/2 "},	{"M4": "3d3/2"},	{"M5": "3d5/2"},	{"N1": "4s"},	{"N2": "4p1/2"},	{"N3": "4p3/2"},	{"N4": "4d3/2"},	{"N5": "4d5/2"},	{"N6": "4f5/2"},	{"N7": "4f7/2"},	{"O1": "5s"},	{"O2": "5p1/2 "},	{"O3": "5p3/2"},	{"O4": "5d3/2"},	{"O5": "5d5/2"},	{"P1": "6s"},	{"P2": "6p1/2"},	{"P3": "6p3/2"} ],
 Edge_energy ={                                                                            

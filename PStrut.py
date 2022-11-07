@@ -1,4 +1,4 @@
-from . import Dans_Diffraction as dif
+import Dans_Diffraction as dif
 from .pt_tables import pt_p, N_av
 from struct import pack
 import numpy as np

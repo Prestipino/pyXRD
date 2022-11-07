@@ -8,10 +8,21 @@
 
 from .pt_tables import pt_p
 from . import transformations as tr
+import copy
 # :Author transformations:
 #  `Christoph Gohlke <http://www.lfd.uci.edu/~gohlke/>`_
 import math
-from numpy import pi, dot, allclose, array, mean, vstack, tile, sum, sqrt
+from numpy import pi, dot, allclose, array, mean, vstack, tile
+import numpy as np
+import Dans_Diffraction as dans
+
+
+si_imolecule = True
+try:
+    import imolecule
+except ImportError:
+    si_imolecule = False
+
 #from imolecule import draw, generate
 #from imolecule.format_converter import json_to_pybel
 
@@ -22,6 +33,10 @@ _EXACT_COSD = {
 
 _tol_r = 1e-6
 _tol_abs = 1e-8
+
+
+def filtCh(string):
+    return ''.join(filter(str.isalpha, string))
 
 
 def cosd(x):
@@ -51,23 +66,51 @@ class Atom(dict):
         self.update({'element': element, 'location': location})
 
     def __add__(self, other):
+        out = copy.deepcopy(self)
         if isinstance(other, Atom):
-            return self['location'] + other['location']
-        return self['location'].__add__(other)
+            out['location'].__iadd__(other['location'])
+        out['location'].__iadd__(other)
+        return out
+
+    def __iadd__(self, other):
+        self['location'].__iadd__(other)
 
     def __radd__(self, other):
         return self['location'] + other
 
     def __sub__(self, other):
+        out = copy.deepcopy(self)
         if isinstance(other, Atom):
-            return self['location'] - other['location']
-        return self['location'].__sub__(other)
+            out['location'].__isub__(other['location'])
+        out['location'].__isub__(other)
+        return out
+
+    def __isub__(self, other):
+        self['location'].__isub__(other)
 
     def __rsub__(self, other):
-        return self['location'] - other
+        return -self['location'] + other
 
     def __neg__(self):
-        return self['location'].__neg__()
+        out = copy.deepcopy(self)
+        out['location'] *= -1
+        return out
+
+    def __mul__(self, other):
+        out = copy.deepcopy(self)
+        if isinstance(other, Atom):
+            out['location'].__imul__(other['location'])
+        out['location'].__imul__(other)
+        return out
+
+    def __imul__(self, other):
+        self['location'].__imul__(other)
+
+    def __matmul__(self, other):
+        out = copy.deepcopy(self)
+        out['location'] = out['location'] @ other
+        return out
+
 
 
 class Bond(dict):
@@ -77,15 +120,38 @@ class Bond(dict):
 
 
 class CMolec(list):
-    def __init__(self, label=None, *args, **kwds):
-        list.__init__(self, *args, **kwds)
+    def __init__(self, label=None, atoms=None):
+        if atoms:
+            super().__init__(item for item in atoms)
+        else:
+            super().__init__()
         self.label = label
         self.basis = array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
         self.bonds = []
 
-    def __getslice__(self, index1, index2):
-        out = super(CMolec, self).__getslice__(index1, index2)
-        return CMolec(self.label, out)
+    def __getitem__(self, subscript):
+        if subscript is None:
+            return self
+        if isinstance(subscript, int):
+            return super().__getitem__(subscript)
+        if isinstance(subscript, list):
+            subscript = np.array(subscript)
+        if isinstance(subscript, tuple):
+            subscript = np.array(subscript)
+        if isinstance(subscript, np.ndarray):
+            if subscript.dtype == bool:
+                mout = CMolec(self.label,
+                              [i for i, j in zip(self, subscript) if j])
+            elif subscript.dtype.kind == 'i':
+                mout = CMolec(self.label, [self[int(i)]for i in subscript])
+            elif subscript.dtype.kind == '<U2':
+                mout = CMolec(self.label,
+                              [a for a in self if a.label in list(subscript)])
+        elif isinstance(subscript, slice):
+            mout = CMolec(self.label, super().__getitem__(subscript))
+        else:
+            raise KeyError('not valid key')
+        return mout
 
     def __repr__(self):
         out = str()
@@ -113,7 +179,7 @@ class CMolec(list):
         cosb = cosd(cell[4])
         cosg, sing = cosd(cell[5]), sind(cell[5])
         vol = cell[0] * cell[1] * cell[2]
-        vol *= math.sqrt(1 - cosa**2 - cosb**2 - cosg **
+        vol *= np.sqrt(1 - cosa**2 - cosb**2 - cosg **
                          2 + 2 * cosa * cosb * cosg)
         matrix = array([0.0] * 9)
         matrix.resize(3, 3)
@@ -160,6 +226,14 @@ class CMolec(list):
                         ' '.join(flatten(self.bonds[i * 16:i * 16 + 16])))
                 if len(self.bonds) % 16:
                     output.append(' '.join(flatten(self.bonds[lines * 16:])))
+        if format == 'mld':
+            stringa = '{0:2d}   {1: 3.5f} {2: 3.5f} {3: 3.5f}'
+            output.append(self.label if self.label else 'TITLE')
+            output.append('pyXRD')
+            Counts_line = '{0:d} {1:d} 0 0 0 0 0 V2000'.format(len(self),  len(self.bonds)  )
+            output.append(Counts_line)
+            #for i_atom in self:            
+
         if format == 'm45':
             stringa = '{0:9s}{jo:2d}{jo:3d}     {jo:1.6f}'
             stringa += '{1: 1.6f}{2: 1.6f}{3: 1.6f}  {jj:1d}'
@@ -182,26 +256,28 @@ class CMolec(list):
     def __genGen__(self, func, subset=None, elements=None, rem_old=False):
         """General generator
         """
-        subset = self.atom_list(subset)
+        sub_self = self[subset]
+        subset = range(len(self)) if subset is None else subset
 
-        def ele_list(li, ele): return ele if ele else [
-            i['element'] for i in li]
-        atom_list = list(zip(ele_list(subset, elements), subset))
-
-        def roundix(x): return round(x, 5)
+        for i, atoms in enumerate(subset):
         for elex, atom in atom_list:
-            new_pos = list(map(roundix, func(atom['location'])))
+            new_pos =  np.round(func(atom['location']), 5)
             if rem_old:
                 self.remove(atom)
             if self.__check_pos__(new_pos):
                 self.append(Atom(elex, new_pos, atom.label))
 
-    @property
     def geom_center(self, subset=None):
-        _zero = array([0.0, 0.0, 0.0])
-        for i in range(len(_zero)):
-            _zero[i] = mean([j + 0 for j in self])
-        return _zero
+        return np.mean(self[subset].xyz, axis=0)
+
+    @property
+    def xyz(self):
+        return np.array([ele['location'] for ele in self])
+
+    @xyz.setter
+    def xyz(self, xyz):
+        for ele, pos in zip(self, xyz):
+            ele['location'] = pos
 
     def atom_list(self, subset=None):
         """ element is a list of element to transform newly generated atoms
@@ -226,7 +302,8 @@ class CMolec(list):
                                 \/label/integer or an atom')
         return subset
 
-    def import_from(self, data, format='auto', refresh=False):
+    @classmethod
+    def import_from(cls, data, format='auto'):
         if format == 'm45':
             try:
                 indata = open(data)
@@ -288,17 +365,32 @@ class CMolec(list):
                         break
                 j_son['bonds'] = [Bond(i) for i in bonds]
 
-        if format == 'pybel':
-            self.pybel_m = data
-        if refresh:
-            for i, item in enumerate(j_son['atoms']):
-                self[i].update(Atom().update(j_son['atoms']))
+        elif format == 'auto' and data[-3:] == 'xyz' or format == 'xyz':
+            try:
+                indata = open(data)
+                data_st = indata.readlines()
+                indata.close()
+            except IOError:
+                data_st = data.split('\n')
+            j_son = {'name': data_st[1]}
+            data = np.genfromtxt(data_st[2:2 + int(data_st[0])],
+                                 dtype=['S2', 'f', 'f', 'f'],
+                                 names=['e', 'x', 'y', 'z'])
+            j_son['atoms'] = [{'element': a['e'].decode("utf-8").strip(),
+                               'location': np.array([a['x'], a['y'], a['z']])}
+                              for a in data]
+
+        elif format == 'auto' or format == 'json' or isinstance(data, dict):
+            j_son = data
+
+        output = cls(label=j_son.get('name', None))
+        for i, item in enumerate(j_son['atoms']):
+            output.append(Atom(**item))
+        if 'bonds' in j_son:
+            output.bonds = j_son['bonds']
         else:
-            self.__init__(label=j_son.get('name', None))
-            for i, item in enumerate(j_son['atoms']):
-                self.append(Atom(**item))
-            if 'bonds' in j_son:
-                self.bonds = j_son['bonds']
+            output.search_bonds()
+        return output
 
     def genR(self, angle, axis,
              subset=None, elements=None, rem_old=False):
@@ -309,7 +401,6 @@ class CMolec(list):
         '''
         angle = angle / 180.0 * pi
         Rmat = tr.rotation_matrix(angle, axis)[:3, :3].T
-
         def Rotate(pos): return dot(pos, Rmat)
         self.__genGen__(Rotate, subset, elements, rem_old)
 
@@ -342,7 +433,7 @@ class CMolec(list):
     def genT(self, vector, lenght=None,
              subset=None, elements=None, rem_old=False):
         '''generate atoms by translation along a vector
-           vector = Corder  ex C1 C2 C 3
+           vector = array light
            lenght = how much is translate
            subset list of labels of atom subjected
         '''
@@ -381,9 +472,31 @@ class CMolec(list):
         angle = tr.angle_between_vectors(vector1, vector2) / pi * 180
         self.genR(angle, axis, subset, elements, rem_old)
 
-#    def draw(self, bond=True):
-#        self.to__pybel(bond=bond)
-#        draw(self.pybel_m, format='pybel')
+    def center(self):
+        self.genT(-self.geom_center, rem_old=True)
+
+    if si_imolecule:
+        def draw(self, bonds=True, cell=False,
+                 camera_type='orthographic', **options):
+            """
+            options = {
+              drawingType: Can be "ball and stick", wireframe, "space filling"
+              camera_type:  Can be "perspective" or orthographic"
+              shader: can be "toon", "basic", "phong", or "lambert"
+            to underline an atom define a key color in the atom
+            };
+
+            """
+            j_son = {"atoms": list(self)}
+            for atom in j_son['atoms']:
+                atom['element'] = filtCh(atom['element'])
+            if bonds:
+                j_son['bonds'] = [{i: di[i] for i in ['atoms', 'order']}
+                                  for di in self.bonds]
+            if cell:
+                j_son['unitcell'] = self.basis
+            imolecule.draw(j_son, format='json',
+                           camera_type=camera_type, **options)
 
     def change_basis(self, transf_mat):
         """ perform a base change X'=XA 
@@ -409,35 +522,84 @@ class CMolec(list):
             self.remove(i)
         return
 
-    def sel_elem(self, subset):
-        # if type_del=='element':
-        if not(isinstance(subset, list)):
-            subset = [subset]
-        delete_list = [j for j in self if j['element'] in subset]
-        return delete_list
+    def calculate_scattering(self, hkl, radiation=None):
+        """
+        """
+        elems = np.array([ele['element'] for ele in self], dtype=str)
+        x, y, z = np.array([ele['location'] for ele in self], dtype=np.float).T
 
-#    def to__pybel(self, bond=True):
-#        '''convert to pybel addinf a pybel properties
-#        '''
-#        if self.bonds:
-#            self.pybel_m = json_to_pybel(
-#                {'atoms': self, 'bonds': self.bonds}, infer_bonds=bond)
-#        else:
-#            self.pybel_m = json_to_pybel({'atoms': self}, infer_bonds=bond)
+        hkl = np.asarray(hkl, dtype=np.float).reshape([-1, 3])
+        self.basis_R = np.linalg.inv(self.basis).T
+        hkl_q = np.dot(hkl, self.basis_R)
+        hkl_qm = np.sqrt(np.sum(hkl_q**2, axis=1))
+        s2 = (hkl_qm / 2) ** 2
+
+        # ### Scattering function f0
+        if radiation == 'electron':
+            fqe = dans.fc.electron_scattering_factor(elems, 2 * hkl_qm * pi)
+        elif radiation == 'X-ray':
+            fqe = dans.fc.xray_scattering_factor_WaasKirf(elems, 2 * hkl_qm * pi)
+        elif radiation == 'neutron':
+            fqe = dans.fc.neutron_scattering_length(elems)
+        elif radiation == 'florentine':
+            datasc = np.genfromtxt('f0_peng.dat', skip_header=0, names=True,
+                                   encoding='ascii', delimiter=',')
+
+            all_elements = list(datasc['Element'])
+            try:
+                index = [all_elements.index(el) for el in elems]
+            except ValueError as ve:
+                raise Exception('Element not available: %s' % ve)
+            datasc = datasc[index]
+
+            fqe = np.zeros([len(hkl_qm), len(elems)])
+            # Loop over elements
+            for n, atom in datasc:
+                # Array multiplication over Qmags
+                f = atom['a1'] * np.exp(-atom['b1'] * s2) + \
+                    atom['a2'] * np.exp(-atom['b2'] * s2) + \
+                    atom['a3'] * np.exp(-atom['b3'] * s2) + \
+                    atom['a4'] * np.exp(-atom['b4'] * s2) + \
+                    atom['a5'] * np.exp(-atom['b5'] * s2)
+                fqe[:, n] = f
+
+        # debye-waller
+        try:
+            B = np.array([ele['B'] for ele in self])[:, None]
+        except KeyError:
+            B = 1
+        DW = np.exp(-s2[:, None] * B)
+
+        # occ
+        try:
+            occ = np.array([ele['occ'] for ele in self], dtype=np.float)
+        except KeyError:
+            occ = 1
+
+        # phase term
+        phase_sf = np.exp(-2j * np.pi * (hkl[:, 0:1] * x
+                                         + hkl[:, 1:2] * y
+                                         + hkl[:, 2:3] * z))
+
+        # f0 * phase
+        return hkl_q, np.sum(DW * phase_sf * fqe * occ, axis=1)
+
+
 def distance(vector):
     return tr.vector_norm(vector)
 
 
 def search_bond(molecule, min_d=0.65, max_d=3.20, cov=True):
-    location = molecule.export('matrix')
+    location = molecule.export(format='matrix')
     bonds = list()
     for i, atom in enumerate(location):
         vdist = (location - tile(atom, (len(molecule), 1)))**2
-        vdist = sqrt(sum(vdist, axis=1))
+        vdist = np.sqrt(np.sum(vdist, axis=1))
         for j, dist in enumerate(vdist[i:]):
             if (dist < min_d) or (dist > max_d):
                 continue
-            el_i, el_j = molecule[i]['element'], molecule[i + j]['element']
+            el_i = filtCh(molecule[i]['element'])
+            el_j = filtCh(molecule[i + j]['element'])
             if cov:
                 if dist > pt_p(el_i, 'cov_r') + pt_p(el_j, 'cov_r'):
                     continue

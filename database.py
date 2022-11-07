@@ -13,15 +13,15 @@ Created on Wed Jul 17 13:11:52 2019
 
 import glob
 import numpy as np
+from pickle import dump, load
+from itertools import combinations_with_replacement as _comb_re
+import matplotlib.pyplot as plt
 
-from itertools import combinations, combinations_with_replacement
-
-
-wik2 = {'1': 'a',
-        '2': 'd',
-        '3': 'c',
-        '4': 'f',
-        '5': 'e'}
+# wik2 = {'1': 'a',
+#        '2': 'd',
+#        '3': 'c',
+#        '4': 'f',
+#        '5': 'e'}
 
 wiks = {'a': {'m': 2, 'coor': '0.00000  0.00000  0.00000  '},
         'd': {'m': 6, 'coor': '0.25000  0.00000  0.50000  '},
@@ -31,7 +31,9 @@ wiks = {'a': {'m': 2, 'coor': '0.00000  0.00000  0.00000  '},
         'general': {'m': 24}}
 
 
-def g_wiks(w=wiks, val=None, gen=False):
+def _wiks(w=wiks, val=None, gen=False):
+    """produces data from wiks
+    """
     v = lambda j: j[val] if val else j
     g = lambda i: True if gen else i != 'general'
     return {i: v(j) for i, j in w.items() if g(i)}
@@ -47,7 +49,7 @@ other_sites = {'S1': {'elem': 'S',
                       'c_occ': 1.0}}
 
 
-def short_notation(comb):
+def _short_notation(comb):
     """for mod_list class
     """
     out = []
@@ -62,7 +64,47 @@ def short_notation(comb):
     return out
 
 
-class mod_list(list):
+class propieta:
+    def __init__(self, name, owner_instance, seq):
+        self.owni = owner_instance
+        self.name = name
+        assert len(owner_instance) == len(seq), 'different lenght'
+        for mod_i, val in zip(owner_instance, seq):
+            setattr(mod_i, self.name, val)
+
+    def __get__(self, instance, owner_type):
+        return np.array([getattr(i, self.name) for i in self.owni])
+
+
+class mod_dic(dict):
+    """
+    """
+
+    def obji2modi(self, remove):
+        comb = []
+        for site_l, site in self.items():
+            for spc, sto in site.items():
+                if not(spc in remove):
+                    for i in range(sto):
+                        comb.append(f'{site_l:s}{spc:s}')
+        return comb
+
+    def v_str(self, remove=[]):
+        """create lisible string with configuration
+        """
+        if remove is False:
+            remove = []
+        finstr = ''
+        for site in self.keys():
+            finstr += f']{site:s}['
+            for spc, val in self[site].items():
+                if spc in remove:
+                    continue
+                finstr += f'{spc:s}{val:d}'
+        return finstr[1:] + ']'
+
+
+class _mod_list(list):
     """list type notation for configuration
        possible to combine more condition by multiplication
        [('aFe', 'aFe', 'fFe', 'fFe', 'fFe', 'fFe', 'fFe', 'fFe'),
@@ -71,20 +113,20 @@ class mod_list(list):
         .......
     """
 
-    def __init__(self, seq, wiks, other_sites=None):
+    def __init__(self, seq, **kargs):
         super().__init__(seq)
-        self.wiks = wiks
-        self.other_sites = other_sites
+        for k, v in kargs.items():
+            setattr(self, k, v)
+        self._kargs = kargs
 
     @classmethod
-    def generate_model(cls, cation, N_cations, debug=0,
-                       wiks=wiks, other_sites=None):
-        """typical use 
+    def generate_model(cls, cation, N_cations, debug=0, **kargs):
+        """typical use
            generate_model('Ge', 4)
         """
-        sm = g_wiks(wiks, val='m')
+        sm = _wiks(wiks, val='m')
         list_site = [i + cation for i in sm.keys()]
-        z = list(combinations_with_replacement(list_site, N_cations))
+        z = list(_comb_re(list_site, N_cations))
 
         if debug:
             print(len(z))
@@ -100,13 +142,15 @@ class mod_list(list):
 
         if debug:
             print(len(z))
-        return cls(z, wiks, other_sites)
+        return cls(z, **kargs)
 
     def convert_database(self, add='Cu'):
         """convert to mod_obj
         """
+        self._kargs.update({'buffer': add})
+
         wiks = self.wiks
-        sm = g_wiks(wiks, 'm')
+        sm = _wiks(wiks, 'm')
 
         def modi2obji(modi):
             """convert an item from obj_mod to mod_list
@@ -116,7 +160,7 @@ class mod_list(list):
                 ('aFe', 'aFe', 'fFe', 'fFe', 'fFe', 'fFe', 'fFe', 'fFe')
             """
 
-            obji = {i: {} for i in sm.keys()}
+            obji = mod_dic({i: {} for i in sm.keys()})
             for sit_spc in set(modi):
                 obji[sit_spc[0]].update({sit_spc[1:]: modi.count(sit_spc)})
             for sit_l, sit in obji.items():
@@ -126,11 +170,12 @@ class mod_list(list):
             return obji
 
         return mod_obj([modi2obji(modi) for modi in self],
-                       self.wiks, self.other_sites)
+                       **self._kargs)
 
     def __mul__(self, other):
+        assert self.wiks == other.wiks, 'different wiks'
         tot_comb = []
-        sm = g_wiks(self.wiks, val='m')
+        sm = _wiks(self.wiks, val='m')
         # print(len(self)*len(other))
         for Fe in self:
             for Ge in other:
@@ -142,7 +187,19 @@ class mod_list(list):
                     tot_comb.append(Fe + Ge)
 
         # print(len(tot_comb))
-        return mod_list(tot_comb)
+        return _mod_list(tot_comb, **self._kargs)
+
+    def __add__(self, other):
+        assert self.wiks == other.wiks, 'different wiks'
+        tot_comb = []
+        # print(len(self)*len(other))
+        # print(self)
+        for Ge in other:
+            if Ge not in self:
+                self.append(Ge)
+        # return #_mod_list(tot_comb, **self._kargs)
+        return self
+
 
     def __getitem__(self, subscript):
         if isinstance(subscript, slice):
@@ -167,21 +224,89 @@ class mod_obj(tuple):
       '6c': {'Cu': 6}}
     """
 
-    def __new__(cls, seq, wiks, other_sites=None):
+    def __new__(cls, seq, wiks, other_sites=None, buffer=None,
+                Spg=None, Biso=None):
         return super().__new__(cls, tuple(seq))
 
-    def __init__(self, seq, wiks, other_sites=None):
-        self.wiks = wiks
-        self.other_sites = other_sites
+    def __init__(self, seq, wiks, other_sites=None, buffer=None,
+                 Spg=None, Biso=None):
+        self._kargs = {'wiks': wiks,
+                       'other_sites': other_sites,
+                       'buffer': buffer,
+                       'Spg': Spg,
+                       'Biso': Biso}
+
+        self.__value__set__ = []
+
+    def _get_kargs(self, key):
+        return self._kargs[key]
+
+    def _set_kargs(self, value, key):
+        self._kargs[key] = value
+
+
+    wiks = property(lambda self: self._get_kargs('wiks'),
+                    lambda self, val: self._set_kargs(val, 'wiks'))
+    other_sites = property(lambda self: self._get_kargs('other_sites'),
+                           lambda self, val: self._set_kargs(val,
+                                                             'other_sites'))
+    buffer = property(lambda self: self._get_kargs('buffer'),
+                      lambda self, val: self._set_kargs(val, 'buffer'))
+    Spg = property(lambda self: self._get_kargs('Spg'),
+                   lambda self, val: self._set_kargs(val, 'Spg'))
+    Biso = property(lambda self: self._get_kargs('Biso'),
+                    lambda self, val: self._set_kargs(val, 'Biso'))
+
+    def __getattribute__(self, attr):
+        # If the attribute does not exist, super().__getattribute__()
+        # will raise an AttributeError
+        got_attr = super().__getattribute__(attr)
+        try:
+            # Try "manually" invoking the descriptor protocol __get__()
+            return got_attr.__get__(self, type(self))
+        except AttributeError:
+            # Attribute is not a descriptor, just return it:
+            return got_attr
+
+    def __delattr__(self, attr):
+        if attr in self.__value__set__:
+            for imod in self:
+                delattr(imod, attr)
+            self.__value__set__.remove(attr)
+
+        del self.__dict__[attr]
+
+    def __str__(self):
+        return '\n'.join([i.v_str() for i in self])
 
     @classmethod
-    def from_cfl(cls, files_condition='*.cfl', conv=wik2, wiks=wiks):
+    def generate_model(cls, cations, N_cations, buffer, wiks,
+                       other_sites=None):
+        '''
+        '''
+        if isinstance(cations, str):
+            cations = [cations]
+        if isinstance(N_cations, int):
+            N_cations = [N_cations]
+        assert len(N_cations) == len(cations), 'len cation and N_cations'
+
+        z0 = _mod_list.generate_model(cations[0], N_cations[0],
+                                      wiks=wiks,
+                                      other_sites=other_sites)
+        for cat, ncat in zip(cations[1:], N_cations[1:]):
+            zi = _mod_list.generate_model(cat, ncat,
+                                          wiks=wiks,
+                                          other_sites=other_sites)
+            z0 = z0 * zi
+        return z0.convert_database(add=buffer)
+
+    @classmethod
+    def from_cfl(cls, files_condition='*.cfl', wiks=wiks, conv=None):
         """used to create a mod_obj
            Mod_str=database.mod_obj(database.retrive_str('Model/*.cfl'))
            conv to0 convert label to site
            wiks = wiks dictionary
         """
-
 
         cfl_list = glob.glob(files_condition)
         assert len(cfl_list) > 0, "empty database"
@@ -198,7 +323,7 @@ class mod_obj(tuple):
                     occu = stringhe[7]
                     site = stringhe[1][-1]
                     if chem[0] != 'S':
-                        natom = float(occu) * sm['general']
+                        natom = float(occu) * wiks['general']['m']
                         if conv:
                             atom[conv[site]].update({chem: round(natom, 2)})
                         else:
@@ -206,18 +331,28 @@ class mod_obj(tuple):
             model.append(atom)
 
         print('done')
-        out
         return cls(model)
 
+    @classmethod
+    def load(cls, filename):
+        with open(filename, 'rb') as infile:
+            a = load(infile)
+        return a
+
+    def save(self, filename):
+        with open(filename, 'wb') as outfile:
+            dump(self, outfile)
+        return
+
     def filter(self, wik, chem_s, cond, N=False):
-        """ check a chemical condition 
+        """ check a chemical condition
         used to create a condition
             Args:
                 wik (str)   : wikoff site
                 chem_s (str): atomic specie
                 cond (str)  : string to evaluate
                 N     (bool): if true return the index f
-                              or wich the condition is True
+                              or which the condition is True
             Returns:
                 array of bolean if N=False
                 array of int (indexes) if N = True
@@ -226,32 +361,14 @@ class mod_obj(tuple):
         """
         qq = self.retrive(wik, chem_s)
         evalu = eval('qq' + cond)
+        N_array = np.array(range(len(self)))[evalu]
         if N:
-            return np.arange(len(self))[evalu] + 1
+            return N_array
         else:
-            return evalu
-
-    def reduce(self, rcond, N=False):
-        """ reduce following a condition 
-        used  a condition create by filter or retrive
-            Args:
-                rcond (bool array)  : array from filtering evaluate
-                N     (bool): if true return the index f
-                              or wich the condition is True
-            Returns:
-                array of bolean if N=False
-                array of int (indexes) if N = True
-            Example:
-                Sn4.filter('a', 'Sn', '>1', N=True)
-        """
-        N_reduced = [i for i in range(len(self)) if rcond[i]]
-        if N:
-            return np.asarray(N_reduced) + 1
-        else:
-            return mod_obj([self[i] for i in N_reduced])
+            return self[evalu]
 
     def retrive(self, wik, chem_s):
-        """return the occupation in a wik site if chem is present else 0 
+        """return the occupation in a wik site if chem is present else 0
            for all the models
            eXAMPLE:
               Sn4.retricve('a', 'Ge+4')
@@ -259,23 +376,19 @@ class mod_obj(tuple):
         qq = [i[wik][chem_s] if chem_s in i[wik].keys() else 0 for i in self]
         return np.array(qq)
 
-    def reorder(self, other):
-        """reorder the tuple using an array in wich the other order is defined
-        example:
-           pippo.reorder([0,3,2,6,8])
-        """
-        try:
-            out = []
-            for i in other:
-                out.append(self.index(i))
-            return out
-        except ValueError:
-            print(i)
-
-    def sorted(self, atom, wik_order={'8e': 'a', '6c': 'b', '6d': 'c', '12f': 'd'}):
+    def sorted(self, atom, wik_order={'e': 'a', 'c': 'b',
+                                      'd': 'c', 'f': 'd'}):
         """change order of models
            using increasing the order in respect the wik order
+
+           Args:
+                wik_order (dict): {site name: priority (string)}
+                          (list)  [site order]
         """
+        if isinstance(wik_order, list):
+            wik_order = {i: str(j) for i, j in zip(wik_order,
+                                                   range(len(wik_order)))}
+
         def sortt(elem, atom, order):
             out = []
             for site in elem:
@@ -285,9 +398,12 @@ class mod_obj(tuple):
             return ''.join(sorted(out))
         out = list(self)
         out.sort(key=lambda elem: sortt(elem, atom, wik_order))
-        return mod_obj(out)
+        mout = mod_obj(out, **self._kargs)
+        for vals in self.__value__set__:
+            mout.values_set([getattr(i, vals) for i in mout], vals)
+        return mout
 
-    def convert_mod_list(self, item=None, remove=['Cu']):
+    def _convert_mod_list(self, remove=['Cu']):
         """convert an item from obj_mod to mod_list
             Args:
                 removes list(str): list of the specise
@@ -295,16 +411,9 @@ class mod_obj(tuple):
             {'f': {'Fe': 6, 'Cu': 6},'a': {'Fe': 2},'d': {'Cu': 6},
              'c': {'Cu': 6},'e': {'Cu': 8}}
         """
-        def obji2modi(obji):
-            comb = []
-            for site_l, site in obji.items():
-                for spc, sto in site.items():
-                    if not(spc in remove):
-                        for i in range(sto):
-                            comb.append('%sspc' % site_l)
-            return comb
 
-        return mod_list([obji2modi(item)] for item in self)
+        return _mod_list([item.obji2modi(remove) for item in self],
+                         **self._kargs)
 
     def save_cfl(self, title='TITLE xx',
                  cell='10.604 10.604 10.604 90 90 90',
@@ -323,7 +432,7 @@ class mod_obj(tuple):
                     stringa.append('ATOM {:s} {:s}   {:s} {:2.4f}{:1.7f}\n'.format(
                         osite_l, osite['elem'], osite['coor'], osite["Biso"], osite["c_occ"]))
 
-            for site_l, site in g_wiks(wiks).items():
+            for site_l, site in _wiks(wiks).items():
                 for spc, n in obji[site_l].items():
                     stringa.append('ATOM {:s} {:s}   {:s} {:2.4f}{:1.7f}\n'.format(
                                    spc + site['m'], spc, site['coor'],
@@ -339,8 +448,11 @@ class mod_obj(tuple):
             with open(name + '.cfl', 'w') as cldfile:
                 cldfile.writelines(stringa)
 
-    def _obji2pcrxyz(self, item, Spg='SPGR  P -4 3 n', patterns=0, Npr=7,
-                     Biso=0.5, sincry=False, commands=False, title='title'):
+    def _objipcrxyz(self, item, patterns=0, Npr=7, Nsp_Ref=0,
+                    sincry=False,
+                    commands=False, title='title', Rmub=2,
+                    postSi=f'{"0   "*4}\n{" "*18}{"0.00     "*5}',
+                    postAt=f'{"0   "*4}\n{" "*18}{"0.00     "*5}'):
         """
         Create the lines in pcf file between Data for PHASE to Profile
             Args:
@@ -349,6 +461,10 @@ class mod_obj(tuple):
                                else new format
                 command (list): command to put in command line
         """
+
+        if (self.Biso is None) or (self.Spg is None):
+            raise ValueError('self.Biso or self.Spg are None')
+
         obji = self[item]
         wiks = self.wiks
         other_sites = self.other_sites
@@ -359,49 +475,133 @@ class mod_obj(tuple):
         pcr_lines.append(f'{title:s} \n!\n')
         if commands:
             pcr_lines.append(commands)
+            pcr_lines.append('\n')
 
-        Nat = sum([len(i) for i in obji.values()])
+        Nat = sum([len(i) for i in obji.values()]) + len(other_sites)
         if patterns:
+            if not(hasattr(Npr, '__iter__')):
+                Npr = [Npr] * patterns
+            if not(hasattr(Nsp_Ref, '__iter__')):
+                Nsp_Ref = [Nsp_Ref] * patterns
             pcr_lines.append('!Nat Dis Ang Jbt Isy Str Furth        ATZ     Nvk More\n')
             pcr_lines.append(f'{Nat:d}   0   0   0   0   0   0       0   0   0\n')
             pcr_lines.append(f'!Contributions (0/1) of this phase to the  {patterns:d} patterns\n')
             pcr_lines.append(' 1' * patterns + '\n')
             for i in range(patterns):
                 pcr_lines.append(f'!Irf Npr Jtyp  Nsp_Ref Ph_Shift for Pattern#  {i+1:d}\n')
-                pcr_lines.append(f'{4 if sincry else 0:d}   {Npr:d}    0      0      0\n')
+                pcr_lines.append(f'{4 if sincry else 0:d}   {Npr[i]:d}    0      {Nsp_Ref[i]:d}      0\n')
                 pcr_lines.append(f'! Pr1    Pr2    Pr3   Brind.   Rmua   Rmub   Rmuc     for Pattern#  {i+1:d}\n')
-                pcr_lines.append('0.000  0.000  0.000  0.000  0.000  0.000  0.000\n')
+                pcr_lines.append(f'0.000  0.000  0.000  0.000  0.000  {Rmub:3.2f}  0.000\n')
 
         else:
             pcr_lines.append('!Nat Dis Ang Pr1 Pr2 Pr3 Jbt Irf Isy Str Furth       ATZ    Nvk Npr More\n')
             pcr_lines.append(f'{Nat:d}   0   0 0.0 0.0 1.0   {4 if sincry else 0:d}   0   0   0   0      0      0   {Npr:d}   0\n')
 
         pcr_lines.append('!\n!\n')
-        pcr_lines.append(f'{Spg:s}                 <--Space group symbol\n')
+        pcr_lines.append(f'{self.Spg:s}                 <--Space group symbol\n')
         pcr_lines.append('!Atom   Typ       X        Y        Z     Biso       Occ     In Fin N_t Spc /Codes\n')
-
-        post = '  0   0   0    0\n                  0.00     0.00     0.00     0.00      0.00\n'
 
         if other_sites:
             for o_sl, o_si in other_sites.items():
-                val = (o_sl, o_si['elem'], o_si['coor'], o_si["Biso"], o_si["c_occ"], post)
+                val = (o_sl, o_si['elem'], o_si['coor'], o_si["Biso"], o_si["c_occ"], f'  {postSi}\n')
                 pcr_lines.append('{:3s}    {:5s}   {:s} {:2.4f}   {:1.5f}{:s}'.format(*val))
 
-        for sl, si in g_wiks(wiks).items():
+        for sl, si in _wiks(wiks).items():
             for spc, n in obji[sl].items():
-                val = (sl + spc, spc, si['coor'], Biso, n / wiks['general']['m'], post)
+                val = (sl + spc, spc, si['coor'], self.Biso, n / wiks['general']['m'], f'  {postAt}\n')
                 pcr_lines.append('{:3s}    {:5s}   {:s} {:2.4f}   {:1.5f}{:s}'.format(*val))
 
         return pcr_lines
 
+    def values_set(self, seq, nam):
+        try:
+            delattr(self, nam)
+        except KeyError:
+            pass
+        except AttributeError:
+            pass
+        setattr(self, nam, propieta(nam, self, seq))
+        self.__value__set__.append(nam)
+
+    def scatter_sites(self, atom, site, ReSC, label=''):
+        """ hl =high limit for test
+        """
+        plt.xlabel('model nb.')
+        plt.title('%s %s' % (label, site))
+        if isinstance(ReSC, str):
+            plt.ylabel(ReSC)
+            ReSC = getattr(self, ReSC)
+        ReSC = np.array(ReSC)
+        for i in range(self.wiks[site]['m'] + 1):
+            cond = '== %d' % i  # Define condition
+            Mod_i = self.filter(site, atom, cond, N=1)
+            i_legend = '%s %s:%d' % (atom, site, i)  # Define label
+            if len(Mod_i) > 0:
+                plt.scatter(Mod_i, ReSC[Mod_i], marker='s', label=i_legend)
+        plt.legend()
+
+    def scatter_site(self, index, ReSC, label='', marker='+',
+                     color='r', size=900):
+        """ plot a cross on the index
+            hl =high limit for test
+        """
+        legend = self[index].v_str(remove=[self.buffer])
+        if isinstance(ReSC, str):
+            ReSC = getattr(self, ReSC)
+        plt.scatter([index], [ReSC[index]], marker=marker,
+                    c=color, s=size, label=legend)
+        plt.legend()
+
     def __getitem__(self, subscript):
-        if isinstance(subscript, slice):
-            return mod_obj(super().__getitem__(subscript),
-                           self.wiks, self.other_sites)
-        else:
+        self._kargs = {'wiks': self.wiks,
+                       'other_sites': self.other_sites,
+                       'buffer': self.buffer,
+                       'Spg': self.Spg,
+                       'Biso': self.Biso}
+        if isinstance(subscript, int):
             return super().__getitem__(subscript)
+        if isinstance(subscript, list):
+            subscript = np.array(subscript)
+        if isinstance(subscript, tuple):
+            subscript = np.array(subscript)
+        if isinstance(subscript, np.ndarray):
+            if subscript.dtype == bool:
+                mout = mod_obj([i for i, j in zip(self, subscript) if j],
+                               **self._kargs)
+            if subscript.dtype.kind == 'i':
+                mout = mod_obj([self[int(i)]for i in subscript],
+                               **self._kargs)
+        elif isinstance(subscript, slice):
+            mout = mod_obj(super().__getitem__(subscript),
+                           **self._kargs)
+        else:
+            raise KeyError('not valid key')
+        for vals in self.__value__set__:
+            seq = [getattr(i, vals) for i in mout]
+            mout.values_set(seq, vals)
+        return mout
 
+    def __mul__(self, other):
+        assert self.wiks == other.wiks, 'different wiks'
+        assert self.buffer == other.buffer, 'different buffer'
 
+        first = self._convert_mod_list([self.buffer])
+        second = other._convert_mod_list([other.buffer])
 
-# example
-# Mod_str.retrive(wik='6d', chem_s='Ge+4')
+        m_l = first * second
+
+        return m_l.convert_database(add=self.buffer)
+
+    def __add__(self, other):
+        assert self.wiks == other.wiks, 'different wiks'
+        assert self.buffer == other.buffer, 'different buffer'
+
+        first = self._convert_mod_list([self.buffer])
+        second = other._convert_mod_list([other.buffer])
+
+        m_l = first + second
+
+        return m_l.convert_database(add=self.buffer)
+
+    def __getnewargs_ex__(self):
+        return ([i for i in self],), self._kargs

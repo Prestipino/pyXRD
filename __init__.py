@@ -23,6 +23,7 @@ The mode of use is relativelly simple :
 from .IO import(XRDdata, XRDfile)
 from .pt_tables import(pt_p, XRD_constant)
 from .PStrut import crystal
+from .Strut import CMolec
 
 
 
