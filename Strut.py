@@ -31,6 +31,7 @@ _EXACT_COSD = {
     180.0: -1.0, 240.0: -0.5, 270.0: 0.0, 300.0: +0.5
 }
 
+_gen_pre = 5
 _tol_r = 1e-6
 _tol_abs = 1e-8
 
@@ -111,6 +112,11 @@ class Atom(dict):
         out['location'] = out['location'] @ other
         return out
 
+    def __round__(self, digit):
+        out = copy.deepcopy(self)
+        out['location'] = np.round(out['location'], digit)
+        return out
+
 
 
 class Bond(dict):
@@ -131,7 +137,7 @@ class CMolec(list):
 
     def __getitem__(self, subscript):
         if subscript is None:
-            return self
+            return self[:]
         if isinstance(subscript, int):
             return super().__getitem__(subscript)
         if isinstance(subscript, list):
@@ -252,20 +258,6 @@ class CMolec(list):
             return
         else:
             return output
-
-    def __genGen__(self, func, subset=None, elements=None, rem_old=False):
-        """General generator
-        """
-        sub_self = self[subset]
-        subset = range(len(self)) if subset is None else subset
-
-        for i, atoms in enumerate(subset):
-        for elex, atom in atom_list:
-            new_pos =  np.round(func(atom['location']), 5)
-            if rem_old:
-                self.remove(atom)
-            if self.__check_pos__(new_pos):
-                self.append(Atom(elex, new_pos, atom.label))
 
     def geom_center(self, subset=None):
         return np.mean(self[subset].xyz, axis=0)
@@ -393,7 +385,7 @@ class CMolec(list):
         return output
 
     def genR(self, angle, axis,
-             subset=None, elements=None, rem_old=False):
+             subset=None, rem_old=False):
         '''generate atoms by one rotation 
            angle = degree
            axis = axis along the rotation
@@ -401,8 +393,13 @@ class CMolec(list):
         '''
         angle = angle / 180.0 * pi
         Rmat = tr.rotation_matrix(angle, axis)[:3, :3].T
-        def Rotate(pos): return dot(pos, Rmat)
-        self.__genGen__(Rotate, subset, elements, rem_old)
+        for atom in self[subset]:
+            new = round(atom @ Rmat, _gen_pre)
+            if rem_old:
+                atom['location'] = new['location']
+            else:
+                if self.__check_pos__(new['location']):
+                    self.append(new)
 
     def genM(self, point, normal,
              subset=None, elements=None, rem_old=False):
@@ -415,23 +412,32 @@ class CMolec(list):
             point = point['location']
         Rmat = tr.reflection_matrix(point, normal)[:3, :3].T
 
-        def Mirror(pos): return dot(pos, Rmat)
-        self.__genGen__(Mirror, subset, elements, rem_old)
+        for atom in self[subset]:
+            new = round(atom @ Rmat, _gen_pre)
+            if rem_old:
+                atom['location'] = new['location']
+            else:
+                if self.__check_pos__(new['location']):
+                    self.append(new)
 
     def genC(self, order, axis,
-             subset=None, elements=None):
+             subset=None):
         '''generate atoms by M simmetry
            order = Corder  ex C1 C2 C 3
            axis = axis along the rotation
            subset list of labels of atom subjected
         '''
         angle = 360.0 / order
-        subset = self.atom_list(subset)
-        for iterC in range(1, order):
-            self.genR(angle * iterC, axis, subset, elements, False)
+        subset = self[subset]
+        for iC in range(1, order):
+            Rmat = tr.rotation_matrix(angle * iC, axis)[:3, :3].T
+            for atom in subset:
+                new = round(atom @ Rmat, _gen_pre)
+                if self.__check_pos__(new['location']):
+                    self.append(new)
 
     def genT(self, vector, lenght=None,
-             subset=None, elements=None, rem_old=False):
+             subset=None, rem_old=False):
         '''generate atoms by translation along a vector
            vector = array light
            lenght = how much is translate
@@ -441,9 +447,13 @@ class CMolec(list):
             vector = vector['location']
         if lenght:
             vector = array(vector) / tr.vector_norm(vector) * lenght
-
-        def Translate(pos): return array(pos) + array(vector)
-        self.__genGen__(Translate, subset, elements, rem_old)
+        for atom in self[subset]:
+            new = round(atom + vector, _gen_pre)
+            if rem_old:
+                atom['location'] = new['location']
+            else:
+                if self.__check_pos__(new['location']):
+                    self.append(new)
 
     def genI(self, point=[0, 0, 0],
              subset=None, elements=None, rem_old=False):
@@ -454,8 +464,13 @@ class CMolec(list):
         if isinstance(point, Atom):
             point = point['location']
 
-        def Inv(pos): return ((array(pos) - array(point)) * -1) + array(point)
-        self.__genGen__(Inv, subset, elements, rem_old=False)
+        for atom in self[subset]:
+            new = round(-atom + (2 * point), _gen_pre)
+            if rem_old:
+                atom['location'] = new['location']
+            else:
+                if self.__check_pos__(new['location']):
+                    self.append(new)
 
     def allig(self, vector1, vector2,
               subset=None, elements=None, rem_old=True):
@@ -473,7 +488,7 @@ class CMolec(list):
         self.genR(angle, axis, subset, elements, rem_old)
 
     def center(self):
-        self.genT(-self.geom_center, rem_old=True)
+        self.genT(-self.geom_center(), rem_old=True)
 
     if si_imolecule:
         def draw(self, bonds=True, cell=False,
@@ -513,14 +528,11 @@ class CMolec(list):
         self.basis = dot(self.basis, transf_mat.T)
         return
 
-    def del_elem(self, subset):
+    def sel_elem(self, subset):
         # if type_del=='element':
         if not(isinstance(subset, list)):
             subset = [subset]
-        delete_list = [j for j in self if j['element'] in subset]
-        for i in delete_list:
-            self.remove(i)
-        return
+        return [j for j, at in enumerate(self) if at['element'] in subset]
 
     def calculate_scattering(self, hkl, radiation=None):
         """
@@ -565,7 +577,7 @@ class CMolec(list):
 
         # debye-waller
         try:
-            B = np.array([ele['B'] for ele in self])[:, None]
+            B = np.array([ele['B'] for ele in self])
         except KeyError:
             B = 1
         DW = np.exp(-s2[:, None] * B)
@@ -607,5 +619,3 @@ def search_bond(molecule, min_d=0.65, max_d=3.20, cov=True):
             bonds.append(
                 {'bond_l': dist, 'elems': at_type, 'atoms': [i, i + j]})
     return bonds
-
-
