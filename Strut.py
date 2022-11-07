@@ -553,27 +553,27 @@ class CMolec(list):
             fqe = dans.fc.xray_scattering_factor_WaasKirf(elems, 2 * hkl_qm * pi)
         elif radiation == 'neutron':
             fqe = dans.fc.neutron_scattering_length(elems)
-        elif radiation == 'florentine':
-            datasc = np.genfromtxt('f0_peng.dat', skip_header=0, names=True,
-                                   encoding='ascii', delimiter=',')
-
-            all_elements = list(datasc['Element'])
-            try:
-                index = [all_elements.index(el) for el in elems]
-            except ValueError as ve:
-                raise Exception('Element not available: %s' % ve)
-            datasc = datasc[index]
-
-            fqe = np.zeros([len(hkl_qm), len(elems)])
-            # Loop over elements
-            for n, atom in datasc:
-                # Array multiplication over Qmags
-                f = atom['a1'] * np.exp(-atom['b1'] * s2) + \
-                    atom['a2'] * np.exp(-atom['b2'] * s2) + \
-                    atom['a3'] * np.exp(-atom['b3'] * s2) + \
-                    atom['a4'] * np.exp(-atom['b4'] * s2) + \
-                    atom['a5'] * np.exp(-atom['b5'] * s2)
-                fqe[:, n] = f
+        # elif radiation == 'florentine':
+        #     datasc = np.genfromtxt('f0_peng.dat', skip_header=0, names=True,
+        #                            encoding='ascii', delimiter=',')
+ 
+        #     all_elements = list(datasc['Element'])
+        #     try:
+        #         index = [all_elements.index(el) for el in elems]
+        #     except ValueError as ve:
+        #         raise Exception('Element not available: %s' % ve)
+        #     datasc = datasc[index]
+ 
+        #     fqe = np.zeros([len(hkl_qm), len(elems)])
+        #     # Loop over elements
+        #     for n, atom in datasc:
+        #         # Array multiplication over Qmags
+        #         f = atom['a1'] * np.exp(-atom['b1'] * s2) + \
+        #             atom['a2'] * np.exp(-atom['b2'] * s2) + \
+        #             atom['a3'] * np.exp(-atom['b3'] * s2) + \
+        #             atom['a4'] * np.exp(-atom['b4'] * s2) + \
+        #             atom['a5'] * np.exp(-atom['b5'] * s2)
+        #         fqe[:, n] = f
 
         # debye-waller
         try:
