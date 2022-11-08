@@ -62,19 +62,21 @@ class Atom(dict):
         dict.__init__(self, **kwds)
         if element is None:
             raise ValueError('element must be differet from None')
-        location = array(location)
+        location = array(location, dtype=float)
         self.label = label
         self.update({'element': element, 'location': location})
 
     def __add__(self, other):
         out = copy.deepcopy(self)
         if isinstance(other, Atom):
-            out['location'].__iadd__(other['location'])
-        out['location'].__iadd__(other)
+            return out['location'].__iadd__(other['location'])
+        out += other
         return out
 
     def __iadd__(self, other):
+        other = np.array(other, dtype=self['location'].dtype)
         self['location'].__iadd__(other)
+        return self
 
     def __radd__(self, other):
         return self['location'] + other
@@ -83,11 +85,13 @@ class Atom(dict):
         out = copy.deepcopy(self)
         if isinstance(other, Atom):
             out['location'].__isub__(other['location'])
-        out['location'].__isub__(other)
+        out += other
         return out
 
     def __isub__(self, other):
+        other = np.array(other, dtype=self['location'].dtype)
         self['location'].__isub__(other)
+        return self
 
     def __rsub__(self, other):
         return -self['location'] + other
@@ -101,11 +105,13 @@ class Atom(dict):
         out = copy.deepcopy(self)
         if isinstance(other, Atom):
             out['location'].__imul__(other['location'])
-        out['location'].__imul__(other)
+        out += other
         return out
 
     def __imul__(self, other):
+        other = np.array(other, dtype=self['location'].dtype)
         self['location'].__imul__(other)
+        return self
 
     def __matmul__(self, other):
         out = copy.deepcopy(self)
@@ -196,6 +202,9 @@ class CMolec(list):
         matrix[1, 2] = cell[2] * (cosa - cosb * cosg) / sing
         matrix[2, 2] = vol / (cell[0] * cell[2] * sing)
         return matrix
+
+    def add_atom(self, element, location, label=None, **kwds):
+        self.append(Atom(element, location, label, **kwds))
 
     def search_bonds(self, min_d=0.65, max_d=3.2, cov_r=True):
         bonds = search_bond(self, min_d=min_d, max_d=max_d, cov=cov_r)
@@ -428,13 +437,8 @@ class CMolec(list):
            subset list of labels of atom subjected
         '''
         angle = 360.0 / order
-        subset = self[subset]
         for iC in range(1, order):
-            Rmat = tr.rotation_matrix(angle * iC, axis)[:3, :3].T
-            for atom in subset:
-                new = round(atom @ Rmat, _gen_pre)
-                if self.__check_pos__(new['location']):
-                    self.append(new)
+            self.genR(angle * iC, axis, subset)
 
     def genT(self, vector, lenght=None,
              subset=None, rem_old=False):
@@ -505,6 +509,7 @@ class CMolec(list):
             j_son = {"atoms": list(self)}
             for atom in j_son['atoms']:
                 atom['element'] = filtCh(atom['element'])
+                atom['location'] = atom['location'] @ self.basis
             if bonds:
                 j_son['bonds'] = [{i: di[i] for i in ['atoms', 'order']}
                                   for di in self.bonds]
@@ -514,18 +519,17 @@ class CMolec(list):
                            camera_type=camera_type, **options)
 
     def change_basis(self, transf_mat):
-        """ perform a base change X'=XA 
-            X  are the coordinate in the old bases
-            X' are the coordinate in the new bases
-            A is the tranformation matrix composed by 
-            X' rappresentation of X basis vectors
+        """ perform a base change X'=AX
+            X  old row basis vectors
+            X' is new X row basis vectors
+            A is the tranformation matrix composed by
+              X' row vector in X basis
         """
         transf_mat = array(transf_mat)
+        self.basis = dot(transf_mat, self.basis)
+        i_mat = np.linalg.inv(transf_mat)
         for j, item in enumerate(self):
-            self[j]['location'] = dot(item['location'], transf_mat)
-        for im, jm in zip(*transf_mat.nonzero()):
-            transf_mat[im, jm] = transf_mat[im, jm]**-1
-        self.basis = dot(self.basis, transf_mat.T)
+            self[j]['location'] = dot(i_mat, item['location'])
         return
 
     def sel_elem(self, subset):
@@ -589,13 +593,12 @@ class CMolec(list):
             occ = 1
 
         # phase term
-        phase_sf = np.exp(-2j * np.pi * (hkl[:, 0:1] * x
+        phase_sf = np.exp(2j * np.pi * (hkl[:, 0:1] * x
                                          + hkl[:, 1:2] * y
                                          + hkl[:, 2:3] * z))
 
         # f0 * phase
         return hkl_q, np.sum(DW * phase_sf * fqe * occ, axis=1)
-
 
 def distance(vector):
     return tr.vector_norm(vector)
