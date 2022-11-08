@@ -15,6 +15,7 @@ import math
 from numpy import pi, dot, allclose, array, mean, vstack, tile
 import numpy as np
 import Dans_Diffraction as dans
+import matplotlib.pyplot as plt
 
 
 si_imolecule = True
@@ -540,6 +541,7 @@ class CMolec(list):
 
     def calculate_scattering(self, hkl, radiation=None):
         """
+            hkl : if list  is a list of hkl
         """
         elems = np.array([ele['element'] for ele in self], dtype=str)
         x, y, z = np.array([ele['location'] for ele in self], dtype=np.float).T
@@ -557,27 +559,28 @@ class CMolec(list):
             fqe = dans.fc.xray_scattering_factor_WaasKirf(elems, 2 * hkl_qm * pi)
         elif radiation == 'neutron':
             fqe = dans.fc.neutron_scattering_length(elems)
-        # elif radiation == 'florentine':
-        #     datasc = np.genfromtxt('f0_peng.dat', skip_header=0, names=True,
-        #                            encoding='ascii', delimiter=',')
- 
-        #     all_elements = list(datasc['Element'])
-        #     try:
-        #         index = [all_elements.index(el) for el in elems]
-        #     except ValueError as ve:
-        #         raise Exception('Element not available: %s' % ve)
-        #     datasc = datasc[index]
- 
-        #     fqe = np.zeros([len(hkl_qm), len(elems)])
-        #     # Loop over elements
-        #     for n, atom in datasc:
-        #         # Array multiplication over Qmags
-        #         f = atom['a1'] * np.exp(-atom['b1'] * s2) + \
-        #             atom['a2'] * np.exp(-atom['b2'] * s2) + \
-        #             atom['a3'] * np.exp(-atom['b3'] * s2) + \
-        #             atom['a4'] * np.exp(-atom['b4'] * s2) + \
-        #             atom['a5'] * np.exp(-atom['b5'] * s2)
-        #         fqe[:, n] = f
+        # radiation == 'florentine':
+            #     datasc = np.genfromtxt('f0_peng.dat', skip_header=0,
+            #                            names=True, encoding='ascii',
+            #                            delimiter=',')
+
+            #     all_elements = list(datasc['Element'])
+            #     try:
+            #         index = [all_elements.index(el) for el in elems]
+            #     except ValueError as ve:
+            #         raise Exception('Element not available: %s' % ve)
+            #     datasc = datasc[index]
+
+            #     fqe = np.zeros([len(hkl_qm), len(elems)])
+            #     # Loop over elements
+            #     for n, atom in datasc:
+            #         # Array multiplication over Qmags
+            #         f = atom['a1'] * np.exp(-atom['b1'] * s2) + \
+            #             atom['a2'] * np.exp(-atom['b2'] * s2) + \
+            #             atom['a3'] * np.exp(-atom['b3'] * s2) + \
+            #             atom['a4'] * np.exp(-atom['b4'] * s2) + \
+            #             atom['a5'] * np.exp(-atom['b5'] * s2)
+            #         fqe[:, n] = f
 
         # debye-waller
         try:
@@ -599,6 +602,118 @@ class CMolec(list):
 
         # f0 * phase
         return hkl_q, np.sum(DW * phase_sf * fqe * occ, axis=1)
+
+    def plot_hklplane(self, x_axis=[1,0,0], y_axis=[0,1,0],centre=[0,0,0],
+                      q_max=2.0, cut_step=0.05, radiation='electron',
+                      background=0.0, log=False, vmin=None, vmax=None):
+        """
+        Plot a cut through reciprocal space, visualising the intensity
+          x_axis = direction along x, in units of the reciprocal lattice (hkl)
+          y_axis = direction along y, in units of the reciprocal lattice (hkl)
+          centre = centre of the plot, in units of the reciprocal lattice (hkl)
+          q_max = maximum distance to plot to - in A-1
+          cut_width = width in height that will be included, in A-1
+          background = average background value
+          peak_width = reflection width in A-1
+
+        E.G. hk plot at L=3 for hexagonal system:
+            xtl.simulate_intensity_cut([1,0,0],[0,1,0],[0,0,3])
+             hhl plot:
+            xtl.simulate_intensity_cut([1,1,0],[0,0,1],[0,0,0])
+        """
+
+        # Determine the directions in cartesian space
+        self.basis_R = np.linalg.inv(self.basis).T
+        hkl_q = np.dot(hkl, self.basis_R)
+
+        def norma(x): np.sqrt(np.sum(x**2))
+
+        x_cart = norma(np.dot(x_axis, self.basis_R))
+        y_cart = norma(np.dot(y_axis, self.basis_R))
+        z_cart = norma(np.cross(x_cart, y_cart))  # z is perp. to x+y
+        y_cart = np.cross(x_cart, z_cart)  # make sure y is perp. to x
+        c_cart = np.dot(x_axis, self.basis_R)
+
+        # Correct y-axis for label - original may not have been perp. to x_axis
+        # (e.g. hexagonal)
+        y_axis = norma(np.dot(x_axis, self.basis))
+
+        # Determine orthogonal lattice vectors for plotting lines and labels
+        # vec_a = x_axis
+        # vec_c = np.cross(x_axis, y_axis)
+        # vec_b = norma(np.cross(vec_c, vec_a))
+
+        # Generate intensity cut
+        ranges = np.array(-q_max, q_max + cut_step, cut_step)
+        vec_x, vec_y = np.meshgrid(ranges, ranges)
+        vec_x = (x_cart[:, None, None] * vec_x[None, :, :]).T + c_cart[None, None, :]
+        vec_y = (y_cart[:, None, None] * vec_y[None, :, :]).T + c_cart[None, None, :]
+        hklq = (vec_x + vec_y)
+        hkl = np.dot(hklq.reshape(-1, 3), self.basis)
+
+        xx, hkl_sf = self.calculate_scattering(hkl, radiation)
+        hkl_i = np.real(hkl_sf * np.conj(hkl_sf))
+
+        # create figure
+        plt.figure()
+        cmap = plt.get_cmap('hot_r')
+        plt.contourf(ranges, ranges, hkl_i.rehape(vec_x.shape), cmap=cmap)
+        plt.axis('image')
+        plt.colorbar()
+
+
+        # Lattice points and vectors within the plot
+        vec_a = np.dot(x_axis, self.basis_R)
+        vec_b = np.dot(y_axis, self.basis_R)
+
+        # Vector arrows and lattice point labels
+        cen_lab = f'({centre[0]:1.3g},{centre[1]:1.3g},{centre[2]:1.3g})' 
+        vec_a_lab = f'(%1.3g,%1.3g,%1.3g)' % (vec_a[0] + centre[0], vec_a[1] + centre[1], vec_a[2] + centre[2])
+        vec_b_lab = f'(%1.3g,%1.3g,%1.3g)' % (vec_b[0] + centre[0], vec_b[1] + centre[1], vec_b[2] + centre[2])
+
+        plt.annotate(vec_a_lab, xy=(0, 0), xycoords='data',
+                     xytext=(*vec_a[:2]), textcoords='data',
+                     arrowprops=dict(arrowstyle="<-"))
+        plt.annotate(vec_b_lab, xy=(0, 0), xycoords='data',
+                     xytext=(*vec_b[:2]), textcoords='data',
+                     arrowprops=dict(arrowstyle="<-"))
+
+        
+        # Plot labels
+        xlab = u'Q || (%1.3g,%1.3g,%1.3g) [$\AA^{-1}$]' % (x_axis[0],x_axis[1],x_axis[2])
+        ylab = u'Q || (%1.3g,%1.3g,%1.3g) [$\AA^{-1}$]' % (y_axis[0],y_axis[1],y_axis[2])
+        ttl = '%s\n(%1.3g,%1.3g,%1.3g)' % (self.xtl.name,centre[0],centre[1],centre[2])
+        fp.labels(ttl,xlab,ylab) 
+
+
+
+
+
+
+        mesh = [grid, grid, grid]
+        mesh[{'h':0, 'k':1, 'l':2}[axis]] = pos
+           
+        hkl = gen_HKL(*mesh)
+        hkl, hkl_sf = model.calculate_scattering(hkl, radiation='electron')
+        hkl_i = np.real(hkl_sf * np.conj(hkl_sf))
+        
+        if plot:
+            hkl=hkl.T
+            x_i = 1 if axis == 'h' else 0 
+            y_i = 1 if axis == 'l' else 2
+            plt.figure()
+            if log:
+                hkl_i = np.log(hkl_i)
+            plt.tricontourf(hkl[x_i], hkl[y_i], hkl_i, 100) #, cmap=cmap)
+            #plt.contourf(hkl[x_i], hkl[y_i], hkl_i, 100)
+            plt.colorbar()
+            plt.axis('image')
+            plt.axis('equal')
+            plt.xlabel('$x^{*} (\AA^{-1}$)')
+            plt.ylabel('$y^{*} (\AA^{-1}$)')
+            plt.title(f'{axis:s} = {pos:1.3f}')
+        else:
+            return hkl, hkl_sf
 
 def distance(vector):
     return tr.vector_norm(vector)
