@@ -125,7 +125,6 @@ class Atom(dict):
         return out
 
 
-
 class Bond(dict):
     def __init__(self, atoms=None, order=1, **kwds):
         dict.__init__(self, **kwds)
@@ -193,7 +192,7 @@ class CMolec(list):
         cosg, sing = cosd(cell[5]), sind(cell[5])
         vol = cell[0] * cell[1] * cell[2]
         vol *= np.sqrt(1 - cosa**2 - cosb**2 - cosg **
-                         2 + 2 * cosa * cosb * cosg)
+                       2 + 2 * cosa * cosb * cosg)
         matrix = array([0.0] * 9)
         matrix.resize(3, 3)
         matrix[0, 0] = cell[0]
@@ -246,9 +245,10 @@ class CMolec(list):
             stringa = '{0:2d}   {1: 3.5f} {2: 3.5f} {3: 3.5f}'
             output.append(self.label if self.label else 'TITLE')
             output.append('pyXRD')
-            Counts_line = '{0:d} {1:d} 0 0 0 0 0 V2000'.format(len(self),  len(self.bonds)  )
+            Counts_line = '{0:d} {1:d} 0 0 0 0 0 V2000'.format(
+                len(self), len(self.bonds))
             output.append(Counts_line)
-            #for i_atom in self:            
+            # for i_atom in self:
 
         if format == 'm45':
             stringa = '{0:9s}{jo:2d}{jo:3d}     {jo:1.6f}'
@@ -556,7 +556,8 @@ class CMolec(list):
         if radiation == 'electron':
             fqe = dans.fc.electron_scattering_factor(elems, 2 * hkl_qm * pi)
         elif radiation == 'X-ray':
-            fqe = dans.fc.xray_scattering_factor_WaasKirf(elems, 2 * hkl_qm * pi)
+            fqe = dans.fc.xray_scattering_factor_WaasKirf(
+                elems, 2 * hkl_qm * pi)
         elif radiation == 'neutron':
             fqe = dans.fc.neutron_scattering_length(elems)
         # radiation == 'florentine':
@@ -597,22 +598,23 @@ class CMolec(list):
 
         # phase term
         phase_sf = np.exp(2j * np.pi * (hkl[:, 0:1] * x
-                                         + hkl[:, 1:2] * y
-                                         + hkl[:, 2:3] * z))
+                                        + hkl[:, 1:2] * y
+                                        + hkl[:, 2:3] * z))
 
         # f0 * phase
         return hkl_q, np.sum(DW * phase_sf * fqe * occ, axis=1)
 
-    def plot_hklplane(self, x_axis=[1,0,0], y_axis=[0,1,0],centre=[0,0,0],
-                      q_max=2.0, cut_step=0.05, radiation='electron',
-                      background=0.0, log=False, vmin=None, vmax=None):
+    def plot_hklplane(self, x_axis=[1, 0, 0], y_axis=[0, 1, 0],
+                      center=[0, 0, 0], q_max=2.0, cut_step=0.05,
+                      radiation='electron', log=False,
+                      vmin=None, vmax=None, arrow=True, arr_heaw=0.05):
         """
         Plot a cut through reciprocal space, visualising the intensity
           x_axis = direction along x, in units of the reciprocal lattice (hkl)
           y_axis = direction along y, in units of the reciprocal lattice (hkl)
           centre = centre of the plot, in units of the reciprocal lattice (hkl)
           q_max = maximum distance to plot to - in A-1
-          cut_width = width in height that will be included, in A-1
+          cut_step = resolution of the figure, in A-1
           background = average background value
           peak_width = reflection width in A-1
 
@@ -624,96 +626,78 @@ class CMolec(list):
 
         # Determine the directions in cartesian space
         self.basis_R = np.linalg.inv(self.basis).T
-        hkl_q = np.dot(hkl, self.basis_R)
 
-        def norma(x): np.sqrt(np.sum(x**2))
+        def norma(x):
+            return x / np.sqrt(np.sum(x**2))
 
         x_cart = norma(np.dot(x_axis, self.basis_R))
         y_cart = norma(np.dot(y_axis, self.basis_R))
         z_cart = norma(np.cross(x_cart, y_cart))  # z is perp. to x+y
         y_cart = np.cross(x_cart, z_cart)  # make sure y is perp. to x
-        c_cart = np.dot(x_axis, self.basis_R)
+        c_cart = np.dot(center, self.basis_R)
 
         # Correct y-axis for label - original may not have been perp. to x_axis
         # (e.g. hexagonal)
-        y_axis = norma(np.dot(x_axis, self.basis))
-
-        # Determine orthogonal lattice vectors for plotting lines and labels
-        # vec_a = x_axis
-        # vec_c = np.cross(x_axis, y_axis)
-        # vec_b = norma(np.cross(vec_c, vec_a))
+        y_axis = norma(np.dot(y_cart, self.basis))
 
         # Generate intensity cut
-        ranges = np.array(-q_max, q_max + cut_step, cut_step)
+        ranges = np.arange(-q_max, q_max + cut_step, cut_step)
         vec_x, vec_y = np.meshgrid(ranges, ranges)
-        vec_x = (x_cart[:, None, None] * vec_x[None, :, :]).T + c_cart[None, None, :]
-        vec_y = (y_cart[:, None, None] * vec_y[None, :, :]).T + c_cart[None, None, :]
-        hklq = (vec_x + vec_y)
+        vec_x = (x_cart[:, None, None] * vec_x[None, :, :]).T
+        vec_y = (y_cart[:, None, None] * vec_y[None, :, :]).T
+        hklq = vec_x + vec_y + c_cart[None, None, :]
         hkl = np.dot(hklq.reshape(-1, 3), self.basis)
 
         xx, hkl_sf = self.calculate_scattering(hkl, radiation)
         hkl_i = np.real(hkl_sf * np.conj(hkl_sf))
 
+        if log:
+            hkl_i = np.log(hkl_i)
+
         # create figure
-        plt.figure()
-        cmap = plt.get_cmap('hot_r')
-        plt.contourf(ranges, ranges, hkl_i.rehape(vec_x.shape), cmap=cmap)
-        plt.axis('image')
+        fig, ax = plt.subplots()
+        # cmap = plt.get_cmap('hot_r')
+        zx, zy = np.meshgrid(ranges, ranges)
+        # plt.tricontourf(xx[:, 0], xx[:, 1], hkl_i, 100)
+        plt.contourf(ranges, ranges, hkl_i.reshape(vec_x.shape[:2]), 100,
+                     vmin=vmin, vmax=vmax)
         plt.colorbar()
 
-
         # Lattice points and vectors within the plot
-        vec_a = np.dot(x_axis, self.basis_R)
-        vec_b = np.dot(y_axis, self.basis_R)
+        cart_m = np.linalg.inv(np.array([x_cart, y_cart, z_cart]))
+        vec_a = np.dot(x_axis, self.basis_R) @ cart_m
+        vec_b = np.dot(y_axis, self.basis_R) @ cart_m
 
         # Vector arrows and lattice point labels
-        cen_lab = f'({centre[0]:1.3g},{centre[1]:1.3g},{centre[2]:1.3g})' 
-        vec_a_lab = f'(%1.3g,%1.3g,%1.3g)' % (vec_a[0] + centre[0], vec_a[1] + centre[1], vec_a[2] + centre[2])
-        vec_b_lab = f'(%1.3g,%1.3g,%1.3g)' % (vec_b[0] + centre[0], vec_b[1] + centre[1], vec_b[2] + centre[2])
+        vec_a_lab = f'{vec_a[0] + center[0]:1.3g},{vec_a[1] + center[1]:1.3g},{vec_a[2] + center[2]:1.3g}'
+        vec_b_lab = f'{vec_b[0] + center[0]:1.3g},{vec_b[1] + center[1]:1.3g},{vec_b[2] + center[2]:1.3g}'
 
-        plt.annotate(vec_a_lab, xy=(0, 0), xycoords='data',
-                     xytext=(*vec_a[:2]), textcoords='data',
-                     arrowprops=dict(arrowstyle="<-"))
-        plt.annotate(vec_b_lab, xy=(0, 0), xycoords='data',
-                     xytext=(*vec_b[:2]), textcoords='data',
-                     arrowprops=dict(arrowstyle="<-"))
+        if arrow:
+            plt.arrow(0, 0, vec_a[0], vec_a[1],
+                      head_width=arr_heaw, length_includes_head=True)
+            plt.text(vec_a[0], vec_a[1], vec_a_lab, weight='bold')
+            plt.arrow(0, 0, vec_b[0], vec_b[1],
+                      head_width=arr_heaw, length_includes_head=True)
+            plt.text(vec_b[0], vec_b[1], vec_b_lab, weight='bold')
 
-        
         # Plot labels
-        xlab = u'Q || (%1.3g,%1.3g,%1.3g) [$\AA^{-1}$]' % (x_axis[0],x_axis[1],x_axis[2])
-        ylab = u'Q || (%1.3g,%1.3g,%1.3g) [$\AA^{-1}$]' % (y_axis[0],y_axis[1],y_axis[2])
-        ttl = '%s\n(%1.3g,%1.3g,%1.3g)' % (self.xtl.name,centre[0],centre[1],centre[2])
-        fp.labels(ttl,xlab,ylab) 
+        xlab = u'Q || (%1.3g,%1.3g,%1.3g) [$\AA^{-1}$]' % (
+            x_axis[0], x_axis[1], x_axis[2])
+        ylab = u'Q || (%1.3g,%1.3g,%1.3g) [$\AA^{-1}$]' % (
+            y_axis[0], y_axis[1], y_axis[2])
+        ttl = '%s\ncenter (%1.3g,%1.3g,%1.3g)' % (self.label, center[0],
+                                                  center[1], center[2])
+        plt.title(ttl)
+        plt.xlabel(xlab)
+        plt.ylabel(ylab)
 
+        def format_coord(x, y):
+            d1 = 1 / np.round(np.sqrt(x**2 + y**2), 2)
+            # return f'{z:s} d={dist2:2.4f} [{dist1:2.4f} pixel]'
+            z = u'x=%5.3f, y=%5.3f,    d_sp=%4.3f Ang.$' % (x, y, d1)
+            return f'{z:s}             '
+        ax.format_coord = format_coord
 
-
-
-
-
-        mesh = [grid, grid, grid]
-        mesh[{'h':0, 'k':1, 'l':2}[axis]] = pos
-           
-        hkl = gen_HKL(*mesh)
-        hkl, hkl_sf = model.calculate_scattering(hkl, radiation='electron')
-        hkl_i = np.real(hkl_sf * np.conj(hkl_sf))
-        
-        if plot:
-            hkl=hkl.T
-            x_i = 1 if axis == 'h' else 0 
-            y_i = 1 if axis == 'l' else 2
-            plt.figure()
-            if log:
-                hkl_i = np.log(hkl_i)
-            plt.tricontourf(hkl[x_i], hkl[y_i], hkl_i, 100) #, cmap=cmap)
-            #plt.contourf(hkl[x_i], hkl[y_i], hkl_i, 100)
-            plt.colorbar()
-            plt.axis('image')
-            plt.axis('equal')
-            plt.xlabel('$x^{*} (\AA^{-1}$)')
-            plt.ylabel('$y^{*} (\AA^{-1}$)')
-            plt.title(f'{axis:s} = {pos:1.3f}')
-        else:
-            return hkl, hkl_sf
 
 def distance(vector):
     return tr.vector_norm(vector)
