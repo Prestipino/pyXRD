@@ -659,7 +659,7 @@ class CMolec(list):
         # cmap = plt.get_cmap('hot_r')
         zx, zy = np.meshgrid(ranges, ranges)
         # plt.tricontourf(xx[:, 0], xx[:, 1], hkl_i, 100)
-        plt.contourf(ranges, ranges, hkl_i.reshape(vec_x.shape[:2]), 100,
+        plt.contourf(ranges, ranges, hkl_i.reshape(vec_x.shape[:2]).T, 100,
                      vmin=vmin, vmax=vmax)
         plt.colorbar()
 
