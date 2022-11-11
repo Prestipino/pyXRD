@@ -591,11 +591,10 @@ class CMolec(list):
         DW = np.exp(-s2[:, None] * B)
 
         # occ
-        try:
-            occ = np.array([ele['occ'] for ele in self], dtype=np.float)
-        except KeyError:
-            print('all occ =1')
-            occ = 1
+        occ = np.ones(len(self), dtype=np.float)
+        for i, occ_d in enumerate(['occ' in ele for ele in self]):
+            if occ_d:
+                occ[i] = self[i]['occ']
 
         # phase term
         phase_sf = np.exp(2j * np.pi * (hkl[:, 0:1] * x
