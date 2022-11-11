@@ -594,6 +594,7 @@ class CMolec(list):
         try:
             occ = np.array([ele['occ'] for ele in self], dtype=np.float)
         except KeyError:
+            print('all occ =1')
             occ = 1
 
         # phase term
@@ -638,7 +639,8 @@ class CMolec(list):
 
         # Correct y-axis for label - original may not have been perp. to x_axis
         # (e.g. hexagonal)
-        y_axis = norma(np.dot(y_cart, self.basis))
+        #y_axis = norma(np.dot(y_axis, self.basis_R))
+        #y_axis = -y_axis / np.min(np.abs(y_axis[np.abs(y_axis) > 0])) + 0.0  # +0.0 to remove -0
 
         # Generate intensity cut
         ranges = np.arange(-q_max, q_max + cut_step, cut_step)
@@ -666,11 +668,12 @@ class CMolec(list):
         # Lattice points and vectors within the plot
         cart_m = np.linalg.inv(np.array([x_cart, y_cart, z_cart]))
         vec_a = np.dot(x_axis, self.basis_R) @ cart_m
-        vec_b = np.dot(y_axis, self.basis_R) @ cart_m
+        vec_b = - np.dot(y_axis, self.basis_R) @ cart_m
 
         # Vector arrows and lattice point labels
-        vec_a_lab = f'{vec_a[0] + center[0]:1.3g},{vec_a[1] + center[1]:1.3g},{vec_a[2] + center[2]:1.3g}'
-        vec_b_lab = f'{vec_b[0] + center[0]:1.3g},{vec_b[1] + center[1]:1.3g},{vec_b[2] + center[2]:1.3g}'
+
+        vec_a_lab = f'{x_axis[0] + center[0]:1.3g}, {x_axis[1] + center[1]:1.3g},{x_axis[2] + center[2]:1.3g}'
+        vec_b_lab = f'{y_axis[0] + center[0]:1.3g}, {y_axis[1] + center[1]:1.3g},{y_axis[2] + center[2]:1.3g}'
 
         if arrow:
             plt.arrow(0, 0, vec_a[0], vec_a[1],
