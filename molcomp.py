@@ -154,11 +154,15 @@ if __name__ == "__main__":
         if formula == "quit":
             break
         sample = c_formula(formula)
-        formula2 = input("\nWhich information \nM =molecular weigh\n\
-                          W= weigh percent\nB= bruteformula\n\
-                          O= Number of mole of O\n\
-                          E= number of O18 Exchange iteration\n\
-                          \nIt is possible more letter example (BWM)")
+        formula2 = input("""
+                Which information M =molecular weigh
+                W= weigh percent
+                B= bruteformula
+                O= Number of mole of O
+                E= number of O18 Exchange iteration
+
+                It is possible more letter example (BWM)
+                """)
         if formula2 == "":
             formula2 = "BMW"
         for i in formula2:
