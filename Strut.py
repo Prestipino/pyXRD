@@ -65,7 +65,7 @@ class Atom(dict):
             raise ValueError('element must be differet from None')
         location = array(location, dtype=float)
         self.label = label
-        self.update({'element': element, 'location': location})
+        self.update({'element': element, 'location': np.round(location, _gen_pre)})
 
     def __add__(self, other):
         out = copy.deepcopy(self)
@@ -430,14 +430,15 @@ class CMolec(list):
                 if self.__check_pos__(new['location']):
                     self.append(new)
 
-    def genC(self, order, axis,
-             subset=None):
+    def genC(self, order, axis, subset=None):
         '''generate atoms by M simmetry
            order = Corder  ex C1 C2 C 3
            axis = axis along the rotation
            subset list of labels of atom subjected
         '''
         angle = 360.0 / order
+        if subset is None:
+            subset = np.arange(len(self))
         for iC in range(1, order):
             self.genR(angle * iC, axis, subset)
 
