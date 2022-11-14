@@ -607,7 +607,7 @@ class CMolec(list):
 
     def plot_hklplane(self, x_axis=[1, 0, 0], y_axis=[0, 1, 0],
                       center=[0, 0, 0], q_max=2.0, cut_step=0.05,
-                      radiation='electron', log=False,
+                      radiation='electron', scat_type='intensity',
                       vmin=None, vmax=None, arrow=True, arr_heaw=0.05):
         """
         Plot a cut through reciprocal space, visualising the intensity
@@ -618,11 +618,13 @@ class CMolec(list):
           cut_step = resolution of the figure, in A-1
           background = average background value
           peak_width = reflection width in A-1
+          scat_type='intensity', angle
 
         E.G. hk plot at L=3 for hexagonal system:
             xtl.simulate_intensity_cut([1,0,0],[0,1,0],[0,0,3])
              hhl plot:
             xtl.simulate_intensity_cut([1,1,0],[0,0,1],[0,0,0])
+
         """
 
         # Determine the directions in cartesian space
@@ -651,18 +653,24 @@ class CMolec(list):
         hkl = np.dot(hklq.reshape(-1, 3), self.basis)
 
         xx, hkl_sf = self.calculate_scattering(hkl, radiation)
-        hkl_i = np.real(hkl_sf * np.conj(hkl_sf))
-
-        if log:
-            hkl_i = np.log(hkl_i)
+        hkl_i = np.abs(hkl_sf * np.conj(hkl_sf))
+        hkl_i = hkl_i.reshape(vec_x.shape[:2]).T
 
         # create figure
         fig, ax = plt.subplots()
-        # cmap = plt.get_cmap('hot_r')
-        zx, zy = np.meshgrid(ranges, ranges)
-        # plt.tricontourf(xx[:, 0], xx[:, 1], hkl_i, 100)
-        plt.contourf(ranges, ranges, hkl_i.reshape(vec_x.shape[:2]).T, 100,
-                     vmin=vmin, vmax=vmax)
+        if scat_type == 'intensity':
+            plt.imshow(hkl_i, vmin=vmin, vmax=vmax, origin='lower',
+                       extent=(-q_max, q_max, -q_max, q_max))
+        elif scat_type == 'log':
+            plt.imshow(np.log(hkl_i), vmin=vmin, vmax=vmax, origin='lower',
+                       extent=(-q_max, q_max, -q_max, q_max))
+        elif scat_type == 'angle':
+            angle = np.angle(hkl_sf)
+            angle = 180 * angle.reshape(vec_x.shape[:2]).T / np.pi
+            alpha = (hkl_i - np.min(angle)) / (np.max(hkl_i) - np.min(angle))
+            plt.imshow(angle, alpha=alpha, vmin=vmin, vmax=vmax,
+                       origin='lower', extent=(-q_max, q_max, -q_max, q_max))
+
         plt.colorbar()
 
         # Lattice points and vectors within the plot
@@ -696,8 +704,7 @@ class CMolec(list):
 
         def format_coord(x, y):
             d1 = 1 / np.round(np.sqrt(x**2 + y**2), 2)
-            # return f'{z:s} d={dist2:2.4f} [{dist1:2.4f} pixel]'
-            z = u'x=%5.3f, y=%5.3f,    d_sp=%4.3f Ang.$' % (x, y, d1)
+            z = u'x=%5.3f, y=%5.3f, d_sp=%4.3f Ang-1 ' % (x, y, d1)
             return f'{z:s}             '
         ax.format_coord = format_coord
 
