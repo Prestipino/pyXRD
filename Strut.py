@@ -660,19 +660,21 @@ class CMolec(list):
         if scat_type == 'intensity':
             hkl_out = np.real(hkl_sf * np.conj(hkl_sf))
             hkl_m = hkl_out.reshape(vec_x.shape[:2]).T
-            plt.imshow(hkl_m, origin='lower', extent=(-q_max, q_max, -q_max, q_max), vmin=vmin, vmax=vmax)
+            im = plt.imshow(hkl_m, origin='lower', extent=(-q_max, q_max, -q_max, q_max), vmin=vmin, vmax=vmax)
         elif scat_type == 'log':
             hkl_out = np.log(np.real(hkl_sf * np.conj(hkl_sf)))
             hkl_m = hkl_out.reshape(vec_x.shape[:2]).T
-            plt.imshow(hkl_m, origin='lower', extent=(-q_max, q_max, -q_max, q_max), vmin=vmin, vmax=vmax)
+            im = plt.imshow(hkl_m, origin='lower', extent=(-q_max, q_max, -q_max, q_max), vmin=vmin, vmax=vmax)
         if scat_type == 'angle':
-            i_alpha = 1 / np.real(hkl_sf * np.conj(hkl_sf))
+            i_alpha =  np.real(hkl_sf * np.conj(hkl_sf))
             alpha = (i_alpha - min(i_alpha)) / (max(i_alpha) - min(i_alpha))
             hkl_out = np.rad2deg(np.angle(hkl_sf))
             hkl_m = hkl_out.reshape(vec_x.shape[:2]).T
-            plt.imshow(hkl_m, alpha=alpha.reshape(vec_x.shape[:2]).T, origin='lower', extent=(-q_max, q_max, -q_max, q_max), vmin=vmin, vmax=vmax)
-        plt.colorbar()
-
+            im = plt.imshow(hkl_m, alpha=alpha.reshape(vec_x.shape[:2]).T, origin='lower', extent=(-q_max, q_max, -q_max, q_max), vmin=vmin, vmax=vmax)
+    
+        cb = plt.colorbar(im)
+        cb.set_alpha(1)
+        plt.draw_all()
 
 
 
