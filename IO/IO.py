@@ -101,14 +101,14 @@ class XRDdata(np.ndarray):
                prec=None, bkg=False, inname=False):
         """ export to text function
         Args:
-            name (str): basename
-            Format (str): available 'xy', fullprof style'FPxy'
-            info (str): info to put in the name
-            prec (int): precision of the info in the name
-            bkg (bool): if background should be subtracted
-
+        name (str): basename
+        Format (str): available 'xy', fullprof style'FPxy'
+        info (str): info to put in the name
+        prec (int): precision of the info in the name
+        bkg (bool): if background should be subtracted
+        
         Returns:
-            bool: The return value. True for success, False otherwise.
+        bool: The return value. True for success, False otherwise.
         """
         if info:
             if prec is None:
@@ -506,7 +506,7 @@ class XRDfile(object):
                 ax2.set_ylabel(info, color=c2)
                 ax2.tick_params(axis='y', labelcolor=c2)
             plt.title(f'range {xmin}--{xmax}')
-        return np.hstack((x, y)).T
+        return np.vstack((x, y))
 
 
 def merge_XRD(slicei, plot=True):
