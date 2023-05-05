@@ -4,11 +4,11 @@ from setuptools import setup
 
 
 setup(
-    name='Dans_Diffraction',
+    name='pyXRD',
     packages=['pyXRD'],
-    version='alpha1',
+    version='1.1.1',
     description='some tools for crystallography',
-    author='C.Prestipino',
+    author='C. Prestipino',
     author_email='carmelo.prestipino@univ-rennes.fr',
     url='https://github.com/Prestipino/pyXRD',
     keywords=[
