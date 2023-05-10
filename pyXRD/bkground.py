@@ -102,27 +102,14 @@ class spline_bkg:
         if isinstance(data, str):
             data = np.loadtxt(data).T
         self.data = data
-        if len(self.data) > 2:
-            pass
-        else:
-            self.data = np.vstack([self.data, np.sqrt(self.data[1])])
-        #default smooting
-        self._s=None
-        self.plotter()
 
-    def plotter(self):
         self.fig, self.ax = plt.subplots()
         # data line
-        self.li, = plt.plot(self.data[0], self.data[1], 'k')
+        self.li, = plt.plot(data[0], data[1], 'k')
         # self.li = plt.errorbar(x=data[0], y=data[1], yerr=data[2],
         #                        fmt='k', capsize=3)
-        if hasattr(self, 'polyl'):
-            self.polyl, = plt.plot(self.polyl.get_xdata(),
-                                   self.polyl.get_ydata(), 'o')
-            self.b, = plt.plot(self.data[0], self.out(self.data[0]), 'r')
-        else:
-            self.b, = plt.plot([], [], 'r')
-            self.polyl, = plt.plot([], [], 'o')
+        self.b, = plt.plot([], [], 'r')
+        self.polyl, = plt.plot([], [], 'o')
 
         plt.xlabel('2$\Theta$($\degree$)')
         plt.ylabel('Intensity (Counts)')
@@ -138,7 +125,9 @@ class spline_bkg:
                 i = np.searchsorted(xpoly, event.xdata)
                 xpoly = np.insert(xpoly, i, event.xdata)
                 if event.button == 2:
-                    ypoly = np.insert(ypoly, i, self.data[1][i])
+                    iy = np.searchsorted(data[0], event.xdata)
+                    ypoly = np.insert(ypoly, iy, data[1][iy])
+                    print('i')
                 elif event.button == 1:
                     ypoly = np.insert(ypoly, i, event.ydata)
             if event.button == 3:
@@ -149,26 +138,19 @@ class spline_bkg:
             self.polyl.set_ydata(ypoly)
             plt.draw()
             if len(xpoly) > 3:
-                self.__submit()
+                submit()
         # cid = fig.canvas.mpl_connect('button_press_event', onclick)
 
+        def submit():
+            xpoly = self.polyl.get_xdata()
+            ypoly = self.polyl.get_ydata()
+            self.out = UnivariateSpline(xpoly, ypoly)
+            self.b.set_ydata(self.out(data[0]))
+            self.b.set_xdata(data[0])
+            self.ax.draw_artist(self.b)
+            return
+
         self.fig.canvas.mpl_connect('button_press_event', onpick)
-
-    def __submit(self):
-        xpoly = self.polyl.get_xdata()
-        ypoly = self.polyl.get_ydata()
-        self.out = UnivariateSpline(xpoly, ypoly, s=self._s)
-        self.b.set_ydata(self.out(self.data[0]))
-        self.b.set_xdata(self.data[0])
-        self.ax.draw_artist(self.b)
-        return
-
-    def set_smooting(self, s=None):
-        """s=0 no smooting
-           s=None default
-        """
-        self._s = s
-        self.__submit()
 
     def get_signal(self):
         bkg = self.out(self.data[0])
@@ -179,8 +161,10 @@ class spline_bkg:
         y = self.data[1] - bkg + minus
         return np.vstack([self.data[0], y])
 
-    def save_signal(self, filname):
-        np.savetxt(filname, self.get_signal().T)
+    def save_signal(self, filname, shift=0):
+        data = self.get_signal()
+        data[1] = data[1] + shift
+        np.savetxt(filname, data.T)
 
     def save_bkgpoints(self, filname):
         xpoly = self.polyl.get_xdata()

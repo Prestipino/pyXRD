@@ -54,6 +54,14 @@ def set_UXDat(s, x):
 class XRDdata(np.ndarray):
     """class for import of uxd file
 
+        method defined
+        set_info
+        def_bkg
+        plot
+        export
+        err seetter
+
+
     """
     def __new__(cls, input_array, info=None):
         # Input array is an already formed ndarray instance
@@ -77,6 +85,8 @@ class XRDdata(np.ndarray):
         self.y = getattr(obj, 'y', None)
 
     def set_info(self, lin, val=None):
+        """
+        """
         if self.info is None:
             self.info = {}
         if val:
@@ -106,6 +116,7 @@ class XRDdata(np.ndarray):
         info (str): info to put in the name
         prec (int): precision of the info in the name
         bkg (bool): if background should be subtracted
+        inname is ifnfo shoul be in name
         
         Returns:
         bool: The return value. True for success, False otherwise.
@@ -129,8 +140,7 @@ class XRDdata(np.ndarray):
             if self.info['UNIT'] == 'cps':
                 Fheader[1] = 'UNIT= cps\n'
             elif self.info['UNIT'] == 'counts':
-                Fheader[1] = 'UNIT= counts, in {:.3f} s\n'.format(
-                    self.info['STEPTIME'])
+                Fheader[1] = 'UNIT= counts'
         else:
             if 'STEPTIME' in self.info:
                 if type(self.info['STEPTIME']) is float:
@@ -149,7 +159,10 @@ class XRDdata(np.ndarray):
 
         y = self.y
         if bkg and self._bkg:
-            y = self.y - self.bkg
+            if bkg is True:
+                y = self.y - self.bkg
+            else:
+                y = self.y - self.bkg + bkg
         if inname:
             name = '{:s}{:s}.{:s}'.format(name, xx, ext)
         else:

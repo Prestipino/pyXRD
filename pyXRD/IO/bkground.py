@@ -125,7 +125,8 @@ class spline_bkg:
                 i = np.searchsorted(xpoly, event.xdata)
                 xpoly = np.insert(xpoly, i, event.xdata)
                 if event.button == 2:
-                    ypoly = np.insert(ypoly, i, data[1][i])
+                    iy = np.searchsorted(data[0], event.xdata)
+                    ypoly = np.insert(ypoly, i, data[1][iy])
                 elif event.button == 1:
                     ypoly = np.insert(ypoly, i, event.ydata)
             if event.button == 3:

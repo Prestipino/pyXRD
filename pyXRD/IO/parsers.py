@@ -17,7 +17,7 @@ def read_id22(self, filename):
         # print(info, datas.shape)
         self.data.append({'array': np.loadtxt(filename, comments=['#', '!']),
                           'info': {'index': 0,
-                                   'UNIT': 'cps'}})
+                                   'UNIT': 'counts'}})
     elif isinstance(filename, list):
         self.data = []
         for i, file_names in enumerate(filename):
@@ -25,7 +25,7 @@ def read_id22(self, filename):
                 self.data.append({'array': np.loadtxt(file_names, 
                                                       comments=['#', '!']),
                                   'info': {'index': i,
-                                           'UNIT': 'cps'}})
+                                           'UNIT': 'counts'}})
             except Exception as excep:
                 print(f'error for {file_names}\n')
                 raise
