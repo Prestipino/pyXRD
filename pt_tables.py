@@ -12,7 +12,6 @@ atomic_weigh    dict       Atomic weight of atoms  uma
 bond_distances  dict       bond distance           Angstrom
 """
 
-from Dans_Diffraction import functions_crystallography as crys_tool
 
 
 

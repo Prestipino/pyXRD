@@ -1,4 +1,7 @@
-import Dans_Diffraction as dif
+try:
+    from Dans_Diffraction.classes_crystal import Crystal, Cell
+except ImportError:
+    print('Dans_Diffraction not installed, no periodic structure functionality')
 from .pt_tables import pt_p, N_av
 from struct import pack
 import numpy as np
@@ -54,7 +57,7 @@ def __type2A__(x):
     return x.replace('+', ' +').replace('-', ' -').split(' ')[0]
 
 
-class crystal(dif.Crystal):
+class Crystal(Crystal):
 
     @classmethod
     def import_from(cls, data, format='auto'):

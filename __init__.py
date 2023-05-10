@@ -22,7 +22,10 @@ The mode of use is relativelly simple :
 """
 from .IO import(XRDdata, XRDfile)
 from .pt_tables import(pt_p, XRD_constant)
-from .PStrut import crystal
+try:
+    from .PStrut import Crystal, Cell
+except:
+    pass
 from .Strut import CMolec
 
 
