@@ -20,6 +20,6 @@ setup(
         'License :: OSI Approved :: Apache Software License',
         'Development Status :: 3 - Alpha',
         ],
-    install_requires=['numpy', 'matplotlib', 'Dans-Diffraction'],
+    install_requires=['numpy', 'matplotlib', 'Dans-Diffraction', 'spglib'],
     package_data={'': []}
     )
