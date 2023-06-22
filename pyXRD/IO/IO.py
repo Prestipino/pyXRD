@@ -108,7 +108,7 @@ class XRDdata(np.ndarray):
         plt.ylabel('Intensity (counts)')
 
     def export(self, name, Format='xy', info=None,
-               prec=None, bkg=False, inname=False):
+               prec=None, bkg=False, inname=False, fmt='%1.10f'):
         """ export to text function
         Args:
         name (str): basename
@@ -116,6 +116,7 @@ class XRDdata(np.ndarray):
         info (str): info to put in the name
         prec (int): precision of the info in the name
         bkg (bool): if background should be subtracted
+                    if bkg is float or int the value is also added
         inname is ifnfo shoul be in name
         
         Returns:
@@ -168,7 +169,7 @@ class XRDdata(np.ndarray):
         else:
             name = '{:s}.{:s}'.format(name, ext)
         np.savetxt(name, np.vstack([self.x, y, self.err]).T,
-                   fmt='%1.10f', header=''.join(Fheader), comments=Fcomments)
+                   fmt=fmt, header=''.join(Fheader), comments=Fcomments)
 
     def def_bkg(self):
         if hasattr(self, '_bkg'):

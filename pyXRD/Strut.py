@@ -608,7 +608,8 @@ class CMolec(list):
     def plot_hklplane(self, x_axis=[1, 0, 0], y_axis=[0, 1, 0],
                       center=[0, 0, 0], q_max=2.0, cut_step=0.05,
                       radiation='electron', scat_type='intensity',
-                      vmin=None, vmax=None, arrow=True, arr_heaw=0.05):
+                      vmin=None, vmax=None, arrow=True, arr_heaw=0.05,
+                      out=False):
         """
         Plot a cut through reciprocal space, visualising the intensity
           x_axis = direction along x, in units of the reciprocal lattice (hkl)
@@ -636,7 +637,7 @@ class CMolec(list):
         y_cart = norma(np.dot(y_axis, self.basis_R))
         z_cart = norma(np.cross(x_cart, y_cart))  # z is perp. to x+y
         y_cart = np.cross(x_cart, z_cart)  # make sure y is perp. to x
-        c_cart = np.dot(center, self.basis_R)
+        c_cart = np.dot(center, self.basis_R)  # define the center
 
         # Correct y-axis for label - original may not have been perp. to x_axis
         # (e.g. hexagonal)
@@ -649,7 +650,7 @@ class CMolec(list):
         vec_x = (x_cart[:, None, None] * vec_x[None, :, :]).T
         vec_y = (y_cart[:, None, None] * vec_y[None, :, :]).T
         hklq = vec_x + vec_y + c_cart[None, None, :]
-        hkl = np.dot(hklq.reshape(-1, 3), self.basis)
+        hkl = np.dot(hklq.reshape(-1, 3), self.basis_R)   #attenzione ho cambiato la base
 
         xx, hkl_sf = self.calculate_scattering(hkl, radiation)
 
@@ -706,6 +707,9 @@ class CMolec(list):
         plt.title(ttl)
         plt.xlabel(xlab)
         plt.ylabel(ylab)
+
+        if out:
+            return hkl_sf, hkl_m
 
 #        def zvalues(x, y):
 #            return hkl_out[i, j]
