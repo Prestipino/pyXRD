@@ -545,9 +545,9 @@ class CMolec(list):
             hkl : if list  is a list of hkl
         """
         elems = np.array([ele['element'] for ele in self], dtype=str)
-        x, y, z = np.array([ele['location'] for ele in self], dtype=np.float).T
+        x, y, z = np.array([ele['location'] for ele in self], dtype=float).T
 
-        hkl = np.asarray(hkl, dtype=np.float).reshape([-1, 3])
+        hkl = np.asarray(hkl, dtype=float).reshape([-1, 3])
         self.basis_R = np.linalg.inv(self.basis).T
         hkl_q = np.dot(hkl, self.basis_R)
         hkl_qm = np.sqrt(np.sum(hkl_q**2, axis=1))
@@ -592,7 +592,7 @@ class CMolec(list):
         DW = np.exp(-s2[:, None] * B)
 
         # occ
-        occ = np.ones(len(self), dtype=np.float)
+        occ = np.ones(len(self), dtype=float)
         for i, occ_d in enumerate(['occ' in ele for ele in self]):
             if occ_d:
                 occ[i] = self[i]['occ']
