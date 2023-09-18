@@ -655,6 +655,10 @@ class CMolec(list):
         xx, hkl_sf = self.calculate_scattering(hkl, radiation)
 
 
+        if out:
+            return hkl_sf.reshape(vec_x.shape[:2]).T
+
+
         # create figure
         fig, ax = plt.subplots()
 
@@ -669,7 +673,7 @@ class CMolec(list):
         if scat_type == 'angle':
             i_alpha =  np.real(hkl_sf * np.conj(hkl_sf))
             alpha = (i_alpha - min(i_alpha)) / (max(i_alpha) - min(i_alpha))
-            hkl_out = np.rad2deg(np.angle(hkl_sf))
+            hkl_out = np.angle(hkl_sf, deg=False)
             hkl_m = hkl_out.reshape(vec_x.shape[:2]).T
             im = plt.imshow(hkl_m, alpha=alpha.reshape(vec_x.shape[:2]).T, origin='lower', extent=(-q_max, q_max, -q_max, q_max), vmin=vmin, vmax=vmax)
     
@@ -708,8 +712,6 @@ class CMolec(list):
         plt.xlabel(xlab)
         plt.ylabel(ylab)
 
-        if out:
-            return hkl_sf, hkl_m
 
 #        def zvalues(x, y):
 #            return hkl_out[i, j]

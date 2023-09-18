@@ -538,6 +538,12 @@ def merge_XRD(slicei, plot=True):
     d_inf = {}
     d_inf.update(slicei[0].info)
 
+    # check if the data contain more than one point
+    slicei = [i for i in slicei if len(i) > 1]
+
+    if len(slicei) < 2:
+        return slicei[0]
+
     one_x = all([np.array_equal(slicei[0].x, i.x) for i in slicei])
 
     if one_x:
