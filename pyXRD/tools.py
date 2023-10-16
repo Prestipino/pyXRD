@@ -1,13 +1,8 @@
 import numpy as np
 
-X_WL = {'Cr': {'Ka': 2.29100, 'Ka1': 2.28970, 'Ka2': 2.29361, 'Kb': 2.08487},
-        'Fe': {'Ka': 1.93736, 'Ka1': 1.93604, 'Ka2': 1.93998, 'Kb': 1.75661},
-        'Co': {'Ka': 1.79026, 'Ka1': 1.78897, 'Ka2': 1.79285, 'Kb': 1.62079},
-        'Cu': {'Ka': 1.54184, 'Ka1': 1.54056, 'Ka2': 1.54439, 'Kb': 1.39222},
-        'Mo': {'Ka': 0.71073, 'Ka1': 0.70930, 'Ka2': 0.71359, 'Kb': 0.63229}}
 
-dspacing = {"Si 111": 3.13467, "Si 311" :1.63702, "Si 511" :1.04514 } 
-
+npsind = lambda x: np.sin(x*np.pi/180.)
+npcosd = lambda x: np.cos(x*np.pi/180.)
 
 def E2T(Ener, dspacing):
     """Calculate The angle for an Energy in eV or KeV given a dspacing
@@ -91,6 +86,20 @@ def Bragg_d(T2, WL=1.5406, Energy=False):
     if WL > 1e-3:
         WL *= 1e-10
     return WL / np.sin(np.radians(T2 / 2)) * 0.5
+
+
+def CTHM(dspacing, WL=1.5406):
+    """Fullprof polarization correction constant for mono
+    """
+    return npcosd(Bragg_2T(dspacing, WL))**2
+
+
+def corPol(T2, cthm=1, K=0.5):
+    """
+    T2 = 2theta degreee
+    """
+    return (1 - K) + K * cthm * np.cos(np.radians(T2)) ** 2
+
 
 
 def T2new_lambda(T2, WLi=1.5405981E-10, WLf=1.5405981E-10):
