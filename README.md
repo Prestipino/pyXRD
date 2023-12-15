@@ -18,11 +18,13 @@ if git is installed ;-)
 ```text
 $ pip install git+https://github.com/Prestipino/pyXRD.git
 ```
+----
+if git is not installed and you don't wanna install
+1) download the library and unzip_it  
+ ![green button](https://github.com/Prestipino/pyXRD/assets/1655996/7b7d1792-4649-4029-a7b1-a5ab12cf011c)
 
-if git is not installed
-download the library and unzip_it
-place in a stable location
-open a python prompt
+2) place in a stable location
+3) open a python prompt
 
 ```text
 # enter in the directory in which setup.py is present
