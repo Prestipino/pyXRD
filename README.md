@@ -25,8 +25,10 @@ place in a stable location
 open a python prompt
 
 ```text
-cd 'pyXRD-master ' the directory in which setup.py is present
+# enter in the directory in which setup.py is present
+cd pyXRD-master 
 ```
 ```python
-python install .
+# perform the local pip install take care of the "." meaning here
+pip install .
 ```
