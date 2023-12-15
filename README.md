@@ -22,8 +22,11 @@ $ pip install git+https://github.com/Prestipino/pyXRD.git
 if git is not installed
 download the library and unzip_it
 place in a stable location
-```text
 open a python prompt
-cd pyXRD-master
-python setup.py install
+
+```text
+cd 'pyXRD-master ' the directory in which setup.py is present
+```
+```python
+python install .
 ```
