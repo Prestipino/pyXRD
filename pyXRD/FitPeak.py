@@ -629,6 +629,8 @@ def del_peak(peaklist, peak):
 
 def JanaPRF(prf, x, y, int_lim=0, plot=True):
     """return hkl and centers
+       int_lim = intensity limit
+
     """
     hkl = HKL()
     prfl = []
@@ -642,9 +644,10 @@ def JanaPRF(prf, x, y, int_lim=0, plot=True):
             else:
                 prfl.append(xx)
     pass
+    # number of index = indexes
     indexes = int(xx.split()[-1])
     prfl = prfl.compress(prfl[:, -1] > int_lim, axis=0)
-    inde = prfl[:, :indexes].astype(np.int)
+    inde = prfl[:, :indexes].astype(int)
     centers = prfl[:, indexes + 2]
     F2 = prfl[:, -1]
     for j, ind in enumerate(inde):

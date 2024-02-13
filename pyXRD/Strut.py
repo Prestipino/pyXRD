@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 
 si_imolecule = True
 try:
-    import imolecule
+    import py3Dmol
 except ImportError:
     si_imolecule = False
 
@@ -242,14 +242,31 @@ class CMolec(list):
                 if len(self.bonds) % 16:
                     output.append(' '.join(flatten(self.bonds[lines * 16:])))
         if format == 'mld':
-            stringa = '{0:2d}   {1: 3.5f} {2: 3.5f} {3: 3.5f}'
+            stringa = '   {0: .4f}   {1: .4f}   {2: .4f} {3:2s}'
             output.append(self.label if self.label else 'TITLE')
             output.append('pyXRD')
-            Counts_line = '{0:d} {1:d} 0 0 0 0 0 V2000'.format(
+            output.append('')
+            Counts_line = '  {0:d}  {1:d}  0  0  0  0  0  V2000'.format(
                 len(self), len(self.bonds))
             output.append(Counts_line)
-            # for i_atom in self:
+            for i_atom in self:
+                output.append(stringa.format(*i_atom['location'],
+                                             i_atom['element']))
+            if self.bonds:
+                b_string = '{0:2d} {1:2d} {2:1d} 0 0 0'
+                for i in self.bonds:
+                    output.append(b_string.format(i['atoms'][0] + 1,
+                                                  i['atoms'][1] + 1,
+                                                  i['order']))
+            output.append('M  END')
 
+        if format == 'xyz':
+            stringa = '{0:s}   {1: 3.5f} {2: 3.5f} {3: 3.5f}'
+            output.append(str(len(self)))
+            output.append(' ')
+            for i_atom in self:
+                output.append(stringa.format(i_atom['element'], *i_atom['location']))
+            output.append(' ')
         if format == 'm45':
             stringa = '{0:9s}{jo:2d}{jo:3d}     {jo:1.6f}'
             stringa += '{1: 1.6f}{2: 1.6f}{3: 1.6f}  {jj:1d}'
@@ -261,6 +278,17 @@ class CMolec(list):
                     an, *i_at['location'], jo=1, jj=0))
         if format == 'matrix':
             output = vstack([i['location'] for i in self])
+        if format == 'json':
+            # for old imolecule
+            j_son = {"atoms": list(self)}
+            for atom in j_son['atoms']:
+                atom['element'] = filtCh(atom['element'])
+                atom['location'] = atom['location'] @ self.basis
+            if bonds:
+                j_son['bonds'] = [{i: di[i] for i in ['atoms', 'order']}
+                                  for di in self.bonds]
+            if cell:
+                j_son['unitcell'] = self.basis
 
         if filename:
             with open(filename, 'w') as filefile:
@@ -508,17 +536,20 @@ class CMolec(list):
             };
 
             """
-            j_son = {"atoms": list(self)}
-            for atom in j_son['atoms']:
-                atom['element'] = filtCh(atom['element'])
-                atom['location'] = atom['location'] @ self.basis
-            if bonds:
-                j_son['bonds'] = [{i: di[i] for i in ['atoms', 'order']}
-                                  for di in self.bonds]
-            if cell:
-                j_son['unitcell'] = self.basis
-            imolecule.draw(j_son, format='json',
-                           camera_type=camera_type, **options)
+            xyz = '\n'.join(self.export(format='mld'))
+            xyzview = py3Dmol.view(width=400, height=400)
+            xyzview.setProjection("orthographic")
+
+            #  xyzview.addModel(xyz,'xyz',{'vibrate': {'frames':10,'amplitude':1}})
+            xyzview.addModel(xyz, 'mol',)
+            xyzview.setStyle({'stick': {'colorscheme': 'jmol'},
+                              'sphere': {'scale': 0.3, 'colorscheme': 'jmol'}})
+            xyzview.setBackgroundColor('0xeeeeee')
+            xyzview.zoomTo()
+            xyzview.show()
+
+
+
 
     def change_basis(self, transf_mat):
         """ perform a base change X'=AX

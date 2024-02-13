@@ -428,7 +428,7 @@ class mod_obj(tuple):
         for i, obji in enumerate(self):
             stringa = [i + '\n' for i in [title, cell, spg]]
             if other_sites:
-                for osite_l, osite in other_sites.itertools():
+                for osite_l, osite in other_sites.items():
                     stringa.append('ATOM {:s} {:s}   {:s} {:2.4f}{:1.7f}\n'.format(
                         osite_l, osite['elem'], osite['coor'], osite["Biso"], osite["c_occ"]))
 
@@ -447,6 +447,53 @@ class mod_obj(tuple):
 
             with open(name + '.cfl', 'w') as cldfile:
                 cldfile.writelines(stringa)
+
+    def Atoms(self, item):
+        """
+        Create the lines in pcf file between Data for PHASE to Profile
+            Args:
+                Spg (str): space group
+                Pattern (int): if 0 old format
+                               else new format
+                command (list): command to put in command line
+        """
+
+        if (self.Biso is None):
+            raise ValueError('self.Biso or self.Spg are None')
+
+        Atoms_i = {}
+        Atoms_i['u'] = []
+        Atoms_i['v'] = []
+        Atoms_i['w'] = []
+        Atoms_i['label'] = []
+        Atoms_i['type'] = []
+        Atoms_i['uiso'] = []
+        Atoms_i['occupancy'] = None
+
+        if other_sites:
+            for o_sl, o_si in other_sites.items():
+                ui, vi, wi = o_si['coor'].split()
+                Atoms_i['u'].append(float(ui))
+                Atoms_i['v'].append(float(vi))
+                Atoms_i['w'].append(float(wi))
+                Atoms_i['biso'].append(o_si["Biso"] / (8 * np.pi**2))
+                Atoms_i['type'].append(o_si['elem'])
+                Atoms_i['label'].append(o_sl)
+                Atoms_i['occupancy'].append(o_si["ch_occ"])
+
+        for sl, si in _wiks(wiks).items():
+            for spc, n in self[item].items():
+                ui, vi, wi = si['coor'].split()
+                Atoms_i['u'].append(float(ui))
+                Atoms_i['v'].append(float(vi))
+                Atoms_i['w'].append(float(wi))
+                Atoms_i['biso'].append(self.Biso / (8 * np.pi**2))
+                Atoms_i['type'].append(spc)
+                Atoms_i['label'].append(sl + spc)
+                Atoms_i['occupancy'].append(n / wiks['general'])
+
+        return Atoms_i
+
 
     def _objipcrxyz(self, item, patterns=0, Npr=7, Nsp_Ref=0,
                     sincry=False,
