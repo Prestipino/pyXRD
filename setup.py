@@ -5,7 +5,6 @@ from setuptools import setup
 
 setup(
     name='pyXRD',
-    packages=['pyXRD'],
     version='1.1.1',
     description='some tools for crystallography',
     author='C. Prestipino',
