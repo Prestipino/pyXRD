@@ -13,6 +13,7 @@ setup(
     url='https://github.com/Prestipino/pyXRD',
     keywords=[
         'crystal', 'diffraction', 'crystallography'],
+    packages=['pyXRD', 'pyXRD.IO', 'pyXRD.GII', 'pyXRD.Crystal'],
     classifiers=[
         'Programming Language :: Python :: 3.7',
         'Intended Audience :: Science/Research',
