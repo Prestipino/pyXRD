@@ -58,7 +58,8 @@ def __type2A__(x):
     return x.replace('+', ' +').replace('-', ' -').split(' ')[0]
 
 
-class Crystal(Crystal)
+class Crystal(Crystal):
+    pass
 
 
 

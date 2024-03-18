@@ -225,136 +225,108 @@ def read_raw(self, filename):
 
         if self.version == "ver. 4":
             filex.seek(0)
-            filex.read(8)
-            filex.read(4)   # results in 65519??                      ## address 8
+            filex.read(8)   # version complet
+            filex.read(4)   # results in 65519??             ## address 
             # file_status=read_uint32_le()
             # status=["done", "active", "aborted", "interrupted"]
             # self.file_status=status[file_status]
-            self.info["MEASURE_DATE"] = read_str(12)        # # address
-            self.info["MEASURE_TIME"] = read_str(12)        # # address
-            self.info['SCAN_cnt_0'] = read_uint32_le()        # maybe start or soller ## address
-            self.info['SCAN_cnt'] = read_uint32_le()                                   # # address
-            self.info['SCAN_cnt2'] = read_uint32_le()                       # maybe done ## address
-            filex.read(13)
+            self.info["MEASURE_DATE"] = read_str(12)        # address 12# noqa E510
+            self.info["MEASURE_TIME"] = read_str(12)        # address 24->36# noqa E510
+            self.info['SCAN_cnt_0'] = read_uint32_le()      # maybe start or soller 36 40# noqa E510
+            self.info['SCAN_cnt'] = read_uint32_le()        # address 40 44# noqa E510
+            self.info['SCAN_cnt2'] = read_uint32_le()       # maybe done address 44 48# noqa E510
+            self.info['RUNTIME'] = read_flt_le()            # maybe done address 48 52# noqa E510
+            self.info['RUNTIME2'] = read_flt_le()           # maybe done address 52 56# noqa E510
+            future_info  = read_uint32_le()                 # maybe done val 1409  address 56 60   # noqa E510
+            filex.read(3)                                   # maybe done  address 60 62                  # noqa E510
 
-            n_char = read_uint32_le()                                 # # address 61
-            n_char1 = read_uint32_le()                                # # address 65
-            n_char = filex.read(n_char1 - 8).decode('ascii')          # # address 69
-            code = n_char[4:28].rstrip('\x00')
-            value = n_char[28:].strip('\x00')
-            self.info["V4_INF_CREATOR"] = value
+            while True:
+                code = read_uint32_le()                                 # offset x->x+4  # noqa E510
+                if code in [0, 160]:
+                    break
+                len_seg = read_uint32_le()                              # offset 4->8  # noqa E510
+                if code == 10:
+                    read_int()                                           #skip 8 -12  # noqa E510
+                    key = filex.read(24).decode('ascii').strip('\x00')   # key 12-36  # noqa E510
+                    self.info[key] = filex.read(len_seg - 36).decode('ascii').strip('\x00') # noqa E510
+                elif code == 30:
+                    read_int()                                           #skip 8 -12    # noqa E510
+                    self.info["V4_INF_STAGE_CODE"]  = read_uint32_le()   # val 12-16  # noqa E510
+                    read_int()                                           #skip 16-20  # noqa E510
+                    read_int()                                           #skip 20-24  # noqa E510
+                    self.info['GONIOMETER_RADIUS'] =  read_flt_le()/2    # val 24-28  # noqa E510
+                    read_int()                                           #skip 28-32  # noqa E510
+                    read_int()                                           #skip 32-36  # noqa E510
+                    self.info["V4_INF_FIXED_DIVSLIT"] = read_flt_le()    # val 36-40  # noqa E510
+                    filex.read(20)
+                    self.info["FIXED_ANTISLIT"] = read_flt_le()           # val 60-64  # noqa E510
+                    self.info["FIXED_DSLIT"]  = read_flt_le()             # val 64-68  # noqa E510
+                    self.info["ALPHA_AVERAGE"]= read_dbl_le()             # val 64-68  # noqa E510
+                    self.info["ALPHA1"]       = read_dbl_le()              # val 64-68  # noqa E510
+                    self.info["ALPHA2"]       = read_dbl_le()              # val 64-68  # noqa E510
+                    self.info["BETA"]         = read_dbl_le()            # val 64-68  # noqa E510
+                    self.info["ALPHA_RATIO"]  = read_dbl_le()             #val 64-68   # noqa E510
+                    read_uint32_le()
+                    self.info["Anode"] = bfile[x+116:x+120].decode('ascii').strip('\x00')  # noqa E510
+                    self.info["W_UNIT"] = bfile[x+120:x+124].decode('ascii').strip('\x00') # noqa E510 
+                elif code == 5:
+                    filex.read(len_seg - 8)
+                else:
+                    print('unknown code', code)
+                    raise ValueError('unknown code')
 
-            val = read_uint32_le()                                           # address 106
-            n_charl = read_uint32_le()                                 # # address 110@@@@@@  45
-            n_char = filex.read(n_char1 - 8).decode('ascii')             # # address 114@@@@@@
-            code = n_char[4:28].rstrip('\x00')
-            value = n_char[28:].strip('\x00')
-            self.info["V4_INF_CREATOR_VERSION"] = value
 
-            val = read_uint32_le()                                           # address 280@@@@@@   value 10
-            n_charl = read_uint32_le()                                 # # address 155@@@@@@  45
-            n_char = filex.read(n_char1 - 8).decode('ascii')             # # address 159@@@@@@
-            code = n_char[4:28].rstrip('\x00')
-            value = n_char[28:].strip('\x00')
-            self.info["V4_INF_WIZARD_VERSION"] = value
 
-            val = read_uint32_le()                                           # address 280@@@@@@   value 10
-            n_charl = read_uint32_le()                                 # # address 200@@@@@@  45
-            n_char = filex.read(n_char1 - 8).decode('ascii')             # # address 204@@@@@@
-            code = n_char[4:28].rstrip('\x00')
-            value = n_char[28:].strip('\x00')
-            self.info["V4_INF_WIZARD_ADDINS"] = value
+            # val = read_uint32_le()                                          # # address 452@@@@@@  10
+            # n_charl = read_uint32_le()                                      # # address 456@@@@@@  50
+            # n_char = filex.read(n_charl - 8).decode('ascii')                  # # address 288@@@@@@
+            # code = n_char[4:28].rstrip('\x00')
+            # value = n_char[28:].strip('\x00')
+            # self.info["OSUSER"] = value
 
-            val = read_uint32_le()                                           # address 280@@@@@@   value 10
-            n_charl = read_uint32_le()                                 # # address 245@@@@@@  39
-            n_char = filex.read(n_charl - 8).decode('ascii')             # # address 249@@@@@@
-            code = n_char[4:28].rstrip('\x00')
-            value = n_char[28:].strip('\x00')
-            self.info["WIZARD_DOCTYPE"] = value
-            # print value
+            # val = read_uint32_le()                                          # # address 502@@@@@@  10
+            # n_charl = read_uint32_le()                                      # # address 506@@@@@@  49
+            # n_char = filex.read(n_charl - 8).decode('ascii')                      # # address 510@@@@@@
+            # code = n_char[4:28].rstrip('\x00')
+            # value = n_char[28:].strip('\x00')
+            # self.info["USER"] = value
 
-            val = read_uint32_le()                                           # address 280@@@@@@   value 10
-            n_charl = read_uint32_le()                                       # # address 284@@@@@@  36
-            n_char = filex.read(n_charl - 8).decode('ascii')                   # # address 288@@@@@@
-            code = n_char[4:28].rstrip('\x00')
-            value = n_char[28:].strip('\x00')
-            self.info["COMMENT"] = value
+            # val = read_uint32_le()                                          # # address 551@@@@@@  10
+            # n_charl = read_uint32_le()                                      # # address 555@@@@@@  42
+            # n_char = filex.read(n_charl - 8).decode('ascii')                  # # address 288@@@@@@
+            # code = n_char[4:28].rstrip('\x00')
+            # value = n_char[28:].strip('\x00')
+            # self.info["SITE"] = value
 
-            assert filex.tell() == 316, 'not 316 but {}'.format(filex.tell())
-            val = read_uint32_le()                                            # address 316@@@@@@   value 30
-            n_charl = read_uint32_le()                                        # address 320@@@@@@  136
-            read_uint32_le()                                                # # address 324@@@@@@     516
-            self.info["V4_INF_STAGE_CODE"]           = read_uint32_le()          # address 328@@@@@@@@@@@ # noqa
-            filex.read(8)
-            assert filex.tell() == 340, 'not 340 but {}'.format(filex.tell())
-            self.info["V4_INF_GONIOMETER_RADIUS"]    = read_uint32_le()/2        # address 340@@@@@@@@@@@ # noqa
-            read_uint32_le()                                                # address 344@@@@@@@@@@@ # noqa
-            read_uint32_le()                   #189                         # address 348@@@@@@@@@@@ # noqa
-            self.info["V4_INF_FIXED_DIVSLIT"]        = read_flt_le()             # address 352@@@@@@@@@@@ # noqa
-            read_uint32_le()                                                # address 356@@@@@@@@@@@ # noqa
-            read_uint32_le()                                         #2.5   # address 360@@@@@@@@@@@ # noqa
-            read_uint32_le()                                                # address 364@@@@@@@@@@@ # noqa
-            self.info["FIXED_ANTISLIT"]              = read_flt_le()             # address 368@@@@@@@@@@@ # noqa
-            self.info["FIXED_DETSLIT"]               = read_flt_le()             # address 372@@@@@@@@@@@ # noqa
-            read_uint32_le()                                         #2.5   # address 376@@@@@@@@@@@ # noqa
-            read_uint32_le()                                         #0     # address 380@@@@@@@@@@@ # noqa
-            read_uint32_le()                                         #0     # address 384@@@@@@@@@@@ # noqa
-            self.info["ALPHA_AVERAGE"]               = read_dbl_le()             # address 388@@@@@@@@@@@ # noqa
-            self.info["ALPHA1"]                      = read_dbl_le()             # address 396@@@@@@@@@@@ # noqa
-            self.info["ALPHA2"]                      = read_dbl_le()             # address 404@@@@@@@@@@ # noqa
-            self.info["BETA"]                        = read_dbl_le()             # address 412@@@@@@@@@@@ # noqa
-            self.info["ALPHA_RATIO"]                 = read_dbl_le()             # address 420@@@@@@@@@@@ # noqa
-            read_uint32_le()                                                # address 428@@@@@@@@@@@ # noqa
-            assert   filex.tell() == 432, 'not 432 but {}'.format(filex.tell())
-            self.info["ANODE_MATERIAL"]              = filex.read(4).rstrip('\x00')  # address 432@@@@@@@@@@@
-            read_uint32_le()                                                # address 436@@@@@@     65
-            filex.read(12)                                                  # address 440@@@@@@     65
-
-            val = read_uint32_le()                                          # # address 452@@@@@@  10
-            n_charl = read_uint32_le()                                      # # address 456@@@@@@  50
-            n_char = filex.read(n_charl - 8).decode('ascii')                  # # address 288@@@@@@
-            code = n_char[4:28].rstrip('\x00')
-            value = n_char[28:].strip('\x00')
-            self.info["OSUSER"] = value
-
-            val = read_uint32_le()                                          # # address 502@@@@@@  10
-            n_charl = read_uint32_le()                                      # # address 506@@@@@@  49
-            n_char = filex.read(n_charl - 8).decode('ascii')                      # # address 510@@@@@@
-            code = n_char[4:28].rstrip('\x00')
-            value = n_char[28:].strip('\x00')
-            self.info["USER"] = value
-
-            val = read_uint32_le()                                          # # address 551@@@@@@  10
-            n_charl = read_uint32_le()                                      # # address 555@@@@@@  42
-            n_char = filex.read(n_charl - 8).decode('ascii')                  # # address 288@@@@@@
-            code = n_char[4:28].rstrip('\x00')
-            value = n_char[28:].strip('\x00')
-            self.info["SITE"] = value
-
-            val = read_uint32_le()                                          # # address 593@@@@@@  10
-            n_charl = read_uint32_le()                                      # # address 597@@@@@@  49
-            n_char = filex.read(n_charl - 8).decode('ascii')                  # # address 601@@@@@@
-            code = n_char[4:28].rstrip('\x00')
-            value = n_char[28:].strip('\x00')
-            self.info["SAMPLEID"] = value
+            # val = read_uint32_le()                                          # # address 593@@@@@@  10
+            # n_charl = read_uint32_le()                                      # # address 597@@@@@@  49
+            # n_char = filex.read(n_charl - 8).decode('ascii')                  # # address 601@@@@@@
+            # code = n_char[4:28].rstrip('\x00')
+            # value = n_char[28:].strip('\x00')
+            # self.info["SAMPLEID"] = value
 
             for cur_range in range(self.info['SCAN_cnt']):
                 print(cur_range)
                 blkmeta = {}
-                val = read_uint32_le()                                    # address 0@642@@@@@@@@value 160
+                val = read_uint32_le()
                 blkmeta['SCAN_step1']         =read_uint32_le()            # address  4@@@@@@@@@@@ # noqa
                 blkmeta['SCAN_step2']         =read_uint32_le()            # address  8@@@@@@@@@@@ # noqa
-                read_uint32_le()                                      # 3  # address 12@@@@@@@@@@@ # noqa
-                filex.read(16)
+                read_uint32_le()                                      # 8  # address 12@@@@@@@@@@@ # noqa
+                read_uint32_le()
+                read_uint32_le()
+                blkmeta['ADDITIONALDETECTOR']         =read_uint32_le()            # address  8@@@@@@@@@@@ # noqa                
                 #print filex.tell(), 'should be 642+36 678'
-                blkmeta['SCAN_type']          =filex.read(32).strip('\00') # address 36@@@@@@@@@@ # noqa
-                read_flt_le()
-                #print filex.tell(), 'should be 642+68 710'
+                read_uint32_le()
+                blkmeta['SCAN_type']        =filex.read(24).decode('ascii').strip('\00') # address 32@@@@@@@@@@ # noqa
+                read_flt_le()                                           # 0 ? # addr 56 # noqa  
+                read_flt_le()                                           # 0 ? # addr 60 # noqa  
+                read_flt_le()                                           # 392 ? # addr 64 # noqa  
+                # print filex.tell(), 'should be 642+68 710'
                 blkmeta["TIMESTARTED"]     =read_flt_le()               # address 68@@@@@@@@@@ # noqa
                 blkmeta["START"]           = read_dbl_le()              # address 72@@@@@@@@@@______not sure result=10 # noqa
                 blkmeta["STEPSIZE"]        = read_dbl_le()              # address 80@@@@@@@@@@ # noqa
                 blkmeta["STEPS"]           = read_uint32_le()           # address 88@@@@@@@@@ # noqa
-                blkmeta["STEPTIME"]   = read_flt_le()              # address 92@@@@@@@@@@ # noqa
+                blkmeta["STEPTIME"]   = read_flt_le()                   # address 92@@@@@@@@@@ # noqa
                 read_flt_le()
                 blkmeta["KV"]              = read_flt_le()              # address 100@@@@@@@@@ # noqa
                 blkmeta["MA"]              = read_flt_le()              # address 104@@@@@@@@@ # noqa
@@ -373,6 +345,7 @@ def read_raw(self, filename):
                 blkmeta["PSDAPERTURE"]      = read_flt_le()             # address 180 @@@@@@@@@@@ # noqa
                 blkmeta["PSDTYPE"]          = read_uint32_le()          # address 184 @@@@@@@@@@@ # noqa
                 blkmeta["PSDFIXED"]         = read_flt_le()             # address 188 @@@@@@@@@@@ # noqa
+
                 # #blkmeta["TEMPCONTROL"] = 2
                 filex.read(52)
                 blkmeta["TEMPCONTROL"]      = read_uint32_le()          # address 244@@@@@@@@ # noqa

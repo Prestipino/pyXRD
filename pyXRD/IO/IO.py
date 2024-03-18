@@ -133,7 +133,7 @@ class XRDdata(np.ndarray):
         else:
             xx = ''
 
-        Fheader = ['XYDATA\n', '\n', '\n', '\n', '\n']
+        Fheader = ['XYDATA\n', '\n', '\n', '\n', '\n', '\n']
         Fcomments = '# '
         ext = Format
 
@@ -148,14 +148,17 @@ class XRDdata(np.ndarray):
                     Fheader[1] = 'UNIT= counts, in {:.3f} s\n'.format(
                         self.info['STEPTIME'])
 
+        if 'TEMPERATURE' in self.info:
+            Fheader[4] = 'TEMP {:.3f} \n'.format(self.info['TEMPERATURE'])
+
         if bkg:
             Fheader[3] = 'background subtracted'
 
         if Format == 'FPxy':
-            Fcomments = '! '
+            Fcomments = ''
 
-        if info:
-            Fheader[2] = 'TEMP %s\n' % xx[1:]
+        # if info:
+        #    Fheader[2] = 'TEMP %s\n' % xx[1:]
         ext = 'xye'
 
         y = self.y
@@ -406,10 +409,10 @@ class XRDfile(object):
         width = len(str(len(self.data) - 1))
         if Format == 'block':
             data = np.vstack([i.cps for i in self.data])
-            np.savetxt(root,data)
+            np.savetxt(root, data)
         for j, i in enumerate(self.data):
             if Format == 'FPxy':
-                name = '{:s}-{:d}'.format(root, j)
+                name = '{:s}_{:d}'.format(root, j + 1)
             else:
                 name = '{:s}_{:0{}d}'.format(root, j, width)
             i.export(name, Format=Format, info=info, prec=prec, inname=inname)
