@@ -98,10 +98,11 @@ class spline_bkg:
     '''interactive background for difficult background
     '''
 
-    def __init__(self, data):
+    def __init__(self, data, w=1):
         if isinstance(data, str):
             data = np.loadtxt(data).T
         self.data = data
+        self.w = w
 
         self.fig, self.ax = plt.subplots()
         # data line
@@ -137,19 +138,23 @@ class spline_bkg:
             self.polyl.set_ydata(ypoly)
             plt.draw()
             if len(xpoly) > 3:
-                submit()
+                submit(text_box.text)
         # cid = fig.canvas.mpl_connect('button_press_event', onclick)
 
-        def submit():
+        def submit(text):
             xpoly = self.polyl.get_xdata()
             ypoly = self.polyl.get_ydata()
-            self.out = UnivariateSpline(xpoly, ypoly)
+            self.out = UnivariateSpline(xpoly, ypoly, w= [eval(text) for i in ypoly])
             self.b.set_ydata(self.out(data[0]))
             self.b.set_xdata(data[0])
-            self.ax.draw_artist(self.b)
+            #self.ax.draw_artist(self.b)
+            plt.draw()
             return
 
         self.fig.canvas.mpl_connect('button_press_event', onpick)
+        axbox = plt.axes([0.25, 0.92, 0.1, 0.055])
+        text_box = TextBox(axbox, 'w', initial=self.w)
+        text_box.on_submit(submit)
 
     def get_signal(self):
         bkg = self.out(self.data[0])

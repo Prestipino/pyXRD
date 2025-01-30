@@ -2,6 +2,7 @@ try:
     from Dans_Diffraction.classes_crystal import Crystal, Cell
 except ImportError:
     print('Dans_Diffraction not installed, no periodic structure functionality')
+
 from .pt_tables import pt_p, N_av
 from struct import pack
 import numpy as np
@@ -58,8 +59,21 @@ def __type2A__(x):
     return x.replace('+', ' +').replace('-', ' -').split(' ')[0]
 
 
+
+
+
+
+
 class Crystal(Crystal):
     pass
+
+    def set_exp_xray_disp_corr(self, elem, energy, f1, f2):
+        if hasattr(self.Scatter, 'ExpDC'):
+            self.Scatter.ExpDC[elem] = {'energy': energy, 'f1': f1, 'f2': f2}
+        else:
+            self.Scatter.ExpDC = {}
+            self.Scatter.ExpDC[elem] = {'energy': energy, 'f1': f1, 'f2': f2}
+
 
 
 

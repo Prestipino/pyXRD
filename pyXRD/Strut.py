@@ -86,7 +86,8 @@ class Atom(dict):
         out = copy.deepcopy(self)
         if isinstance(other, Atom):
             out['location'].__isub__(other['location'])
-        out += other
+        else:
+            out += other
         return out
 
     def __isub__(self, other):
@@ -132,7 +133,7 @@ class Bond(dict):
 
 
 class CMolec(list):
-    def __init__(self, label=None, atoms=None):
+    def __init__(self, atoms=None, label=None):
         if atoms:
             super().__init__(item for item in atoms)
         else:
@@ -140,6 +141,32 @@ class CMolec(list):
         self.label = label
         self.basis = array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
         self.bonds = []
+
+    def __add__(self, other):
+        zz = self.copy()
+        if isinstance(other, CMolec):
+            for atom in other:
+                if zz.__check_pos__(atom['location']):
+                    zz.add_atom(**atom)
+            return zz
+        else:
+            print(type(other))
+            print('isinstance(other, CMolec) ', isinstance(other, CMolec))
+            raise NotImplementedError('only implemented CMolec')
+
+    def __iadd__(self, other):
+        if isinstance(other, CMolec):
+            for atom in other.copy():
+                if self.__check_pos__(atom['location']):
+                    self.append(atom)
+            return self
+        else:
+            print(type(other))
+            print('isinstance(other, CMolec) ', isinstance(other, CMolec))
+            raise NotImplementedError('only implemented CMolec')
+
+    def copy(self):
+        return CMolec(atoms=[Atom(**dict(i.items())) for i in self])
 
     def __getitem__(self, subscript):
         if subscript is None:
@@ -152,15 +179,14 @@ class CMolec(list):
             subscript = np.array(subscript)
         if isinstance(subscript, np.ndarray):
             if subscript.dtype == bool:
-                mout = CMolec(self.label,
-                              [i for i, j in zip(self, subscript) if j])
+                mout = CMolec([i for i, j in zip(self, subscript) if j],
+                              self.label)
             elif subscript.dtype.kind == 'i':
-                mout = CMolec(self.label, [self[int(i)]for i in subscript])
+                mout = CMolec([self[int(i)]for i in subscript], self.label)
             elif subscript.dtype.kind == '<U2':
-                mout = CMolec(self.label,
-                              [a for a in self if a.label in list(subscript)])
+                mout = CMolec([a for a in self if a.label in list(subscript)], self.label)
         elif isinstance(subscript, slice):
-            mout = CMolec(self.label, super().__getitem__(subscript))
+            mout = CMolec(super().__getitem__(subscript), self.label)
         else:
             raise KeyError('not valid key')
         return mout
@@ -242,18 +268,19 @@ class CMolec(list):
                 if len(self.bonds) % 16:
                     output.append(' '.join(flatten(self.bonds[lines * 16:])))
         if format == 'mld':
-            stringa = '   {0: .4f}   {1: .4f}   {2: .4f} {3:2s}'
+            stringa = '{0:10.4f}{1:10.4f}{2:10.4f} {3:2s}'
             output.append(self.label if self.label else 'TITLE')
             output.append('pyXRD')
             output.append('')
-            Counts_line = '  {0:d}  {1:d}  0  0  0  0  0  V2000'.format(
+            #print('pippo')
+            Counts_line = '{0:3d}{1:3d}  0  0  0  0  0  V2000'.format(
                 len(self), len(self.bonds))
             output.append(Counts_line)
             for i_atom in self:
                 output.append(stringa.format(*i_atom['location'],
                                              i_atom['element']))
             if self.bonds:
-                b_string = '{0:2d} {1:2d} {2:1d} 0 0 0'
+                b_string = '{0:3d}{1:3d} {2:1d} 0 0 0'
                 for i in self.bonds:
                     output.append(b_string.format(i['atoms'][0] + 1,
                                                   i['atoms'][1] + 1,
@@ -526,19 +553,22 @@ class CMolec(list):
 
     if si_imolecule:
         def draw(self, bonds=True, cell=False,
-                 camera_type='orthographic', **options):
+                 camera_type='orthographic', 
+                 width=600, height=400, **options):
             """
             options = {
-              drawingType: Can be "ball and stick", wireframe, "space filling"
+              width=600, height=400
+              drawingType: Can be "line", cross, sphere, cartoon"
               camera_type:  Can be "perspective" or orthographic"
               shader: can be "toon", "basic", "phong", or "lambert"
             to underline an atom define a key color in the atom
             };
 
             """
+
             xyz = '\n'.join(self.export(format='mld'))
-            xyzview = py3Dmol.view(width=400, height=400)
-            xyzview.setProjection("orthographic")
+            xyzview = py3Dmol.view(width=width, height=height)
+            xyzview.setProjection(camera_type)
 
             #  xyzview.addModel(xyz,'xyz',{'vibrate': {'frames':10,'amplitude':1}})
             xyzview.addModel(xyz, 'mol',)
@@ -547,9 +577,6 @@ class CMolec(list):
             xyzview.setBackgroundColor('0xeeeeee')
             xyzview.zoomTo()
             xyzview.show()
-
-
-
 
     def change_basis(self, transf_mat):
         """ perform a base change X'=AX
@@ -770,7 +797,7 @@ def search_bond(molecule, min_d=0.65, max_d=3.20, cov=True):
             el_i = filtCh(molecule[i]['element'])
             el_j = filtCh(molecule[i + j]['element'])
             if cov:
-                if dist > pt_p(el_i, 'cov_r') + pt_p(el_j, 'cov_r'):
+                if dist > (pt_p(el_i, 'cov_r') + pt_p(el_j, 'cov_r')) * cov:
                     continue
             at_type = frozenset((el_i, el_j))
             bonds.append(
