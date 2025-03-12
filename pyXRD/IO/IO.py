@@ -288,7 +288,7 @@ class XRDfile(object):
                     if debug:
                         self._read_UDX(filename)
             elif filename[-3:].upper() == 'RAW':
-                print('reading as RAW\n')
+                print('reading as RAW Brucker\n')
                 #try:
                 read_raw(self, filename)
                 self.data = [XRDdata(i['array'],
@@ -377,6 +377,9 @@ class XRDfile(object):
             info['STEPTIME'] = float(
                 scan.find('.//%scommonCountingTime' % name_space).text)
             intensity = scan.find('.//%sintensities' % name_space)
+            if intensity is None:
+                datPoints = scan.find('.//%sdataPoints' % name_space)
+                intensity = datPoints.find('.//%scounts' % name_space)
             info['UNIT'] = intensity.get('unit')
             y = np.fromstring(intensity.text, sep=' ')
             x = np.linspace(t2sp, t2ep, len(y))
