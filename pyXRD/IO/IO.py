@@ -466,10 +466,13 @@ class XRDfile(object):
             data = np.log(data)
         x = self.data[0].x
         y = [i.info[info] for i in self.data[start:stop]]
-        plt.imshow(data, aspect='auto', extent=(
-            x[0], x[-1], y[0], y[-1]), **keyargs)
+        ys= y[0]-(y[1]-y[0])/2
+        yf= y[-1]+(y[-1]-y[-2])/2
+        fig = plt.imshow(data, aspect='auto', extent=(
+                         x[0], x[-1], ys, yf), **keyargs)
         plt.xlabel(r'2$\theta$ ($\degree$)')
         plt.ylabel(info)
+
 
     def get_info(self, info):
         '''print a scan info as function of the scan number
