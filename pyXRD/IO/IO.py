@@ -443,7 +443,7 @@ class XRDfile(object):
         if len(self.data[start:stop]) < 11:
             plt.legend()
 
-    def plot_info(self, info, new=1, *args, **keyargs):
+    def plot_info(self, info, new=1, **keyargs):
         '''plot a scan info as function of the scan number
            *args, **keyargs are argument for the plot
 
@@ -458,29 +458,45 @@ class XRDfile(object):
         plt.plot(x, y, label=info, *args, **keyargs)
 
     def D2plot(self, log=0, start=None, stop=None, info='index', **keyargs):
-        plt.figure()
         data = np.vstack([i.cps for i in self.data[start:stop]])
         data = np.flip(data, axis=0)
-        print(data.shape)
         if log:
             data = np.log(data)
         x = self.data[0].x
         y = [i.info[info] for i in self.data[start:stop]]
-        ys= y[0]-(y[1]-y[0])/2
-        yf= y[-1]+(y[-1]-y[-2])/2
-        fig = plt.imshow(data, aspect='auto', extent=(
-                         x[0], x[-1], ys, yf), **keyargs)
-        plt.xlabel(r'2$\theta$ ($\degree$)')
-        plt.ylabel(info)
+        index = [i.info['index'] for i in self.data[start:stop]]
+        if np.unique(np.diff(y)).size == 1:
+            onegraph = True
+            ys= y[0]-(y[1]-y[0])/2
+            yf= y[-1]+(y[-1]-y[-2])/2
+            fig = plt.imshow(data, aspect='auto', extent=(  x[0], x[-1], ys, yf), **keyargs)
+            plt.xlabel(r'2$\theta$ ($\degree$)')
+            plt.ylabel(info)
+        else:
+            ys = index[0] - 0.5
+            yf = index[-1] + 0.5
+            fig, (ax1, ax2) = plt.subplots(1,2, sharey=True, gridspec_kw={'width_ratios': [4, 1]})
+            ax1.imshow(data, aspect='auto', extent=(  x[0], x[-1], ys, yf), **keyargs)
+            ax1.set_xlabel(r'2$\theta$ ($\degree$)')
+            ax1.set_ylabel('index')
+            ax2.plot([float(i.info[info]) for i in self.data[start:stop]], index, 'o-')
+            ax2.set_xlabel(info)
+            ax2.grid(True)
+            plt.subplots_adjust(wspace=0)
+        return
+    
 
 
-    def get_info(self, info):
+
+
+    def get_info(self, info, printout=False):
         '''print a scan info as function of the scan number
         '''
         x = [i.info['index'] for i in self.data]
         y = [float(i.info[info]) for i in self.data]
-        for i in zip(x, y):
-            print(i)
+        if printout:
+            for i in zip(x, y):
+                print(i)
         return y
 
 
