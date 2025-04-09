@@ -11,6 +11,33 @@ def calc_x(start, step, data):
     return np.array([start + step * i for i in np.arange(len(data))])
 
 
+def read_ras(filename):
+    with open(filename) as ifile:
+        ifilecom = [j[1:] for j in ifile.readlines() if j[0] == '*']
+    data = np.loadtxt(filename, comments='*')[:, :2]
+    meas_dict = dict([j.split()[:2] for j in ifilecom if 'MEAS' in j])
+    valkeyn = [i[24:] for i, j in meas_dict.items() if ('AXIS_POS' in i) and ('None' not in j)]
+    vmeas_d = {}
+    vmeas_d['info_g'] = {}
+    for ik in valkeyn:
+        name = meas_dict[f'MEAS_COND_AXIS_NAME-{ik}'][1:-1]
+        vmeas_d[name] = {'POS': meas_dict[f'MEAS_COND_AXIS_POSITION-{ik}'][1:-1]}
+        vmeas_d[name]['INAME'] = meas_dict[f'MEAS_COND_AXIS_NAME_INTERNAL-{ik}'][1:-1]
+        if meas_dict[f'MEAS_COND_AXIS_UNIT-{ik}'][1:-1]:
+            vmeas_d[name]['unit'] = meas_dict[f'MEAS_COND_AXIS_UNIT-{ik}'][1:-1]
+    vmeas_d['SCAN_START_TIME'] = meas_dict['MEAS_SCAN_START_TIME'][1:-1]
+    vmeas_d['UNIT'] = meas_dict['MEAS_SCAN_UNIT_Y'][1:-1]
+    meas_dict = dict([j.split()[:2] for j in ifilecom if 'HW_' in j])
+    vmeas_d['info_g']['ATTACHMENT_NAME'] = meas_dict['HW_ATTACHMENT_NAME'][1:-1]
+    vmeas_d['info_g']['CATHODE'] = meas_dict['HW_XG_TARGET_NAME'][1:-1]
+    vmeas_d['info_g']['ALPHA1'] = meas_dict['HW_XG_WAVE_LENGTH_ALPHA1']
+    vmeas_d['info_g']['ALPHA2'] = meas_dict['HW_XG_WAVE_LENGTH_ALPHA2']
+
+    if [True for i in ifilecom if "VariableSlit" in i]:
+        vmeas_d['Var_slit'] = True
+    return data, vmeas_d
+
+
 def read_id22(self, filename):
     if isinstance(filename, str):
         self.data = []

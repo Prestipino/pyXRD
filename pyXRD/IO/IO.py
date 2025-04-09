@@ -28,7 +28,7 @@ draw()
 import numpy as np
 from matplotlib import pylab as plt
 from .bkground import spline_bkg
-from .parsers import read_raw, read_D1B, read_id22
+from .parsers import read_raw, read_D1B, read_id22, read_ras
 
 plt.ion()
 
@@ -162,16 +162,25 @@ class XRDdata(np.ndarray):
         ext = 'xye'
 
         y = self.y
+        err = self.err
+
         if bkg and self._bkg:
             if bkg is True:
                 y = self.y - self.bkg
             else:
                 y = self.y - self.bkg + bkg
+
+        if 'Var_slit' in self.info:
+            if self.info['Var_slit']:
+                cor = np.sin(np.deg2rad(self.x / 2))
+                y = (y / cor) * np.mean(cor)
+                err = (err / cor) * np.mean(cor)
+
         if inname:
             name = '{:s}{:s}.{:s}'.format(name, xx, ext)
         else:
             name = '{:s}.{:s}'.format(name, ext)
-        np.savetxt(name, np.vstack([self.x, y, self.err]).T,
+        np.savetxt(name, np.vstack([self.x, y, err]).T,
                    fmt=fmt, header=''.join(Fheader), comments=Fcomments)
 
     def def_bkg(self):
@@ -263,7 +272,18 @@ class XRDfile(object):
                 read_id22(self, filename)
                 self.data = [XRDdata(i['array'], i['info']) for i in self.data]
         elif filename:
-            if filename[-5:].upper() == 'XRDML':
+            if isinstance(filename, list):
+                if filename[0][-3:].upper() == 'RAS':
+                    self.data = []
+                    print('reading as RAS RIGAKU\n')
+                    for i, ifilen in enumerate(filename):
+                        data, info = read_ras(ifilen)
+                        self.info = info.pop('info_g')
+                        info.update({'TEMPERATURE': float(info['Temp']['POS']),
+                                     'STEPTIME': 1,
+                                     'index': i})
+                        self.data.append(XRDdata(data, info))
+            elif filename[-5:].upper() == 'XRDML':
                 print('reading as XrdML (Panalytical)\n')
                 try:
                     self._read_XrdML(filename)
@@ -289,14 +309,15 @@ class XRDfile(object):
                         self._read_UDX(filename)
             elif filename[-3:].upper() == 'RAW':
                 print('reading as RAW Brucker\n')
-                #try:
                 read_raw(self, filename)
                 self.data = [XRDdata(i['array'],
                                      i['info']) for i in self.data]
-                # except Exception as error:
-                #     print('impossible to open as RAW', error)
-                #     if debug:
-                #         read_raw(self, filename)
+            elif filename[-3:].upper() == 'RAS':
+                print('reading as RAS RIGAKU\n')
+                data, info = read_ras(filename)
+                self.info = info
+                datainfo = {'TEMPERATURE':float(info['Temp'][POS]), 'UNIT':info['UNIT'], 'STEPTIME':1}
+                self.data = [XRDdata(data, datainfo)]
             else:
                 print('unknown format')
 
@@ -443,7 +464,7 @@ class XRDfile(object):
         if len(self.data[start:stop]) < 11:
             plt.legend()
 
-    def plot_info(self, info, new=1, **keyargs):
+    def plot_info(self, info, new=1, *args, **keyargs):
         '''plot a scan info as function of the scan number
            *args, **keyargs are argument for the plot
 
@@ -484,10 +505,6 @@ class XRDfile(object):
             ax2.grid(True)
             plt.subplots_adjust(wspace=0)
         return
-    
-
-
-
 
     def get_info(self, info, printout=False):
         '''print a scan info as function of the scan number
@@ -498,7 +515,6 @@ class XRDfile(object):
             for i in zip(x, y):
                 print(i)
         return y
-
 
     def merge(self, slicei=None, plot=True, output=False):
         '''merge a set of scan

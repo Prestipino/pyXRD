@@ -57,11 +57,6 @@ def mul(x, y):
     return str(float(x) * float(y)) if (x and y) else x or y
 
 
-def addi(x, y):
-    return str(float(x) + float(y)) if (x and y) else str(
-        float(x or y or "1") + 1)
-
-
 def longjoin(x, y):
     return "".join(["".join((item[0], mul(item[1], y))) for item in x])
 
@@ -107,16 +102,13 @@ class c_formula():
                 stringa = re.sub(braket_p, inbraket, stringa)
             else:
                 form = re.findall(atom_p, stringa)
-                form.sort()
-                form[0] = list(form[0])
-                for i in range(1, len(form)):
-                    form[i] = list(form[i])
-                    if form[i][0] == form[i - 1][0]:
-                        form[i - 1][1] = addi(form[i - 1][1], form[i][1])
-                        form.pop(i)
                 self.formula = {}
-                for i, j in form:
-                    self.formula[i] = float(j) if j else 1.
+                for ele, sto in form:
+                    sto = sto if sto else 1.0
+                    if ele in self.formula.keys():
+                        self.formula[ele] += sto
+                    else:
+                        self.formula[ele] = sto
                 self.brute = longjoin_space(form, "")
                 return
 
