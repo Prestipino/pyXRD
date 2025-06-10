@@ -28,7 +28,7 @@ draw()
 import numpy as np
 from matplotlib import pylab as plt
 from .bkground import spline_bkg
-from .parsers import read_raw, read_D1B, read_id22, read_ras
+from .parsers import read_raw, read_D1B, read_id22, read_ras, read_rasx
 
 plt.ion()
 
@@ -273,16 +273,14 @@ class XRDfile(object):
                 self.data = [XRDdata(i['array'], i['info']) for i in self.data]
         elif filename:
             if isinstance(filename, list):
-                if filename[0][-3:].upper() == 'RAS':
-                    self.data = []
-                    print('reading as RAS RIGAKU\n')
-                    for i, ifilen in enumerate(filename):
-                        data, info = read_ras(ifilen)
-                        self.info = info.pop('info_g')
-                        info.update({'TEMPERATURE': float(info['Temp']['POS']),
-                                     'STEPTIME': 1,
-                                     'index': i})
-                        self.data.append(XRDdata(data, info))
+                listaXRDfile = []
+                for i, file in  enumerate(filename):
+                    listaXRDfile.append(XRDfile(file, debug=debug))
+                    listaXRDfile[-1].info['index'] = i
+                self.info = listaXRDfile[0].info
+                self.data = [i.data[0] for i in listaXRDfile]
+                for i, d in enumerate(self.data):
+                    d.info['index'] = i
             elif filename[-5:].upper() == 'XRDML':
                 print('reading as XrdML (Panalytical)\n')
                 try:
@@ -318,6 +316,17 @@ class XRDfile(object):
                 self.info = info
                 datainfo = {'TEMPERATURE':float(info['Temp'][POS]), 'UNIT':info['UNIT'], 'STEPTIME':1}
                 self.data = [XRDdata(data, datainfo)]
+            elif filename[-4:].upper() == 'RASX':
+                print('reading as RASX RIGAKU\n')
+                listadata = read_rasx(filename)
+                self.info = listadata[0][1]
+                self.data=[]
+                for i, item in enumerate(listadata):
+                    data, info = item
+                    datainfo = {'TEMPERATURE':float(info['Temp']), 'UNIT':info['IntensityUnit'], 'STEPTIME':1}
+                    datainfo['index'] = i
+                    datainfo.update(info)
+                    self.data.append(XRDdata(data, datainfo))            
             else:
                 print('unknown format')
 
@@ -517,9 +526,9 @@ class XRDfile(object):
         return y
 
     def merge(self, slicei=None, plot=True, output=False):
-        '''merge a set of scan
+        '''merge a set of scan create an attribute self.merged
         slicei = list of xrd dato to be merged
-        merge (bool): if true create a self.merged
+        output (str): if true returnts the merged data
         '''
         if slicei is None:
             slicei = list(range(len(self.data)))
@@ -588,11 +597,11 @@ def merge_XRD(slicei, plot=True):
     one_x = all([np.array_equal(slicei[0].x, i.x) for i in slicei])
 
     if one_x:
-        d_inf.info['STEPTIME'] = np.sum([j.info['STEPTIME']
+        d_inf['STEPTIME'] = np.sum([j.info['STEPTIME']
                                          for j in slicei], axis=0)
         x = slicei[0].x
         y = np.sum([j.y for j in slicei], axis=0)
-        d_inf.info['UNIT'] = 'counts'
+        d_inf['UNIT'] = 'counts'
 
     else:
         d_inf['x_max'] = np.round(max([i.x[-1] for i in slicei]), 7)
