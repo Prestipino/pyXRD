@@ -5,10 +5,10 @@ from setuptools import setup
 
 setup(
     name='pyXRD',
-    version='1.1.1',
+    version='1.1.2',
     description='some tools for crystallography',
     author='C. Prestipino',
-    author_email='carmelo.prestipino@univ-rennes.fr',
+    author_email='carmelo.prestipino@ensicaen.fr',
     url='https://github.com/Prestipino/pyXRD',
     keywords=[
         'crystal', 'diffraction', 'crystallography'],
