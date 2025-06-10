@@ -71,6 +71,11 @@ def weight(formula):
     sample = c_formula(formula)
     return sample.MW
 
+def parse_formula(formula):
+    """Parse a formula and return a dictionary with the elements and their counts
+    """
+    sample = c_formula(formula)
+    return sample.formula
 
 class c_formula():
     """Class defining formula
@@ -92,7 +97,7 @@ class c_formula():
         self.__WP_c__()
 
     def __bruteformula__(self):
-        stringa = self.start_formula
+        stringa = self.start_formula.replace(" ", "")
 
         def inbraket(grb):
             s1 = re.findall(atom_p, grb.group(0))

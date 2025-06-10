@@ -4,6 +4,9 @@
 """
 import numpy as np
 import os
+import re
+import zipfile
+import xml.etree.ElementTree as ET
 
 
 def calc_x(start, step, data):
@@ -36,6 +39,71 @@ def read_ras(filename):
     if [True for i in ifilecom if "VariableSlit" in i]:
         vmeas_d['Var_slit'] = True
     return data, vmeas_d
+
+
+from typing import List, Tuple, Dict
+
+def read_rasx(file_path: str) -> List[Tuple[np.ndarray, Dict[str, str]]]:
+    """
+    Parses a Rigaku .rasx file with multiple datasets (e.g., Data0, Data1, ...) using NumPy for
+    intensity profile loading, and extracts metadata from <Axes>, AttachmentHead, StartTime, EndTime.
+
+    Returns:
+        A list of tuples, each containing:
+            - NumPy array of shape (N, 2) with columns: [2theta, intensity].
+            - Dictionary of extracted metadata.
+    """
+    results = []
+    out_metadata = ['Temp', 'PrimaryMirrorType']
+
+    with zipfile.ZipFile(file_path, 'r') as zf:
+        # Detect all DataX folders
+        data_folders = sorted(set(
+            re.match(r'(Data\d+)/', name).group(1)
+            for name in zf.namelist()
+            if re.match(r'Data\d+/', name)
+        ))
+
+        for folder in data_folders:
+            profile_array = np.empty((0, 2))  # Default empty
+            metadata = {}
+
+            profile_file = f'{folder}/Profile0.txt'
+            metadata_file = f'{folder}/MesurementConditions0.xml'
+
+            # Load profile using NumPy
+            if profile_file in zf.namelist():
+
+                with zf.open(profile_file) as pf:
+                    try:
+                        profile_array = np.loadtxt(pf, skiprows=1) 
+                    except Exception as e:
+                        print(f"Error reading {profile_file}: {e}")
+
+            # Parse XML metadata
+            if metadata_file in zf.namelist():
+                with zf.open(metadata_file) as mf:
+                    tree = ET.parse(mf)
+                    root = tree.getroot()
+
+                    # Extract <Axes> metadata
+                    axes_node = root.find('.//Axes')
+                    if axes_node is not None:
+                        for elem in axes_node.iter():
+                            if elem.attrib:
+                                if elem.attrib['Name'] in out_metadata:
+                                    metadata[elem.attrib['Name']] = elem.attrib['Position']
+
+                    # Extract other useful fields
+                    for tag in ['*HW_ATTACHMENT_NAME', 'StartTime', 'EndTime', 'IntensityUnit']:
+                        node = root.find(f'.//{tag}')
+                        if node is not None and node.text:
+                            metadata[tag] = node.text.strip()
+
+            results.append((profile_array, metadata))
+
+    return results
+
 
 
 def read_id22(self, filename):
@@ -422,3 +490,5 @@ def read_raw(self, filename):
     for j, i in enumerate(self.data):
         i['info']['index'] = j
         i['info']['UNIT'] = 'counts'
+
+

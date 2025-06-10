@@ -203,6 +203,7 @@ def MuR(R, Mat, EneWL=0.71, pack=0.6, density=False, compo=False):
            5 < values  < 100 are considered energy in keV
            value > 100 are considered energy in eV
     compo: boolean output components
+    pack: packing factor, default 0.6, used only for crystal no density
     """
 
     if isinstance(Mat, Crystal):
