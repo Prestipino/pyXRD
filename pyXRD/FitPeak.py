@@ -50,6 +50,11 @@ def ran_peak(x, center, range=None):
 
 def data_lim(data, drs):
     """limit the data using an array with two values
+    args:
+        data (np.array): 2D array with the first row as x values
+        drs (list or np.array): two values defining the range to limit the data
+    returns:
+        np.array: 2D array with the data limited to the range defined by drs
     """
     return data[:, index_of(data[0], drs[0]): index_of(data[0], drs[1]) + 1]
 
@@ -395,7 +400,7 @@ class GaussianModel(Model):
 
 
 ############################################################################
-def create_PicBack(x, y, centers, back, back_degree=1, Guess=True, prg=None,
+def create_PicBack(x, y, centers, back, back_int=None, back_degree=1, Guess=True, prg=None,
                    Pconstrain=None, plot=True, model=PseudoVoigtModel):
     """Create model and parameter for a fit
     Create a model and the relate parameters for the fit
@@ -406,6 +411,7 @@ def create_PicBack(x, y, centers, back, back_degree=1, Guess=True, prg=None,
         y
         centers
         back
+        back_int=None: background intensity if None use y values at back points
         back_degree=1 degree of polinomial used for background
         Guess :Guess [True] or ['C'] stay for course
         prg (float): range to guess the peak
@@ -416,9 +422,6 @@ def create_PicBack(x, y, centers, back, back_degree=1, Guess=True, prg=None,
         plot= if True plot the first guess??
         model= a lmfit compatible model for the peaks default PseudoVoigtModel
 
-
-
-
     """
 
     if not prg:
@@ -427,7 +430,12 @@ def create_PicBack(x, y, centers, back, back_degree=1, Guess=True, prg=None,
 
     # Background definitions
     line_mod = PolynomialModel(degree=back_degree, prefix='line_')
-    pars = line_mod.guess(data=y, x=x, points=back)
+    if back_int is not None:
+        pars = line_mod.guess(data=y, x=x, points=back)
+    else:
+        pars = line_mod.guess(data=back_int, x=back)
+    if len(pars) == 0:
+        raise ValueError('No background points found in data')
     mod = line_mod
 
     # utiliy function to check the overimposion of peaks
