@@ -512,7 +512,7 @@ class XRDfile(object):
             ax2.plot([float(i.info[info]) for i in self.data[start:stop]], index, 'o-')
             ax2.set_xlabel(info)
             ax2.grid(True)
-            plt.subplots_adjust(wspace=0)
+            plt.subplots_adjust(wspace=0.05)
         return
 
     def get_info(self, info, printout=False):
@@ -542,6 +542,15 @@ class XRDfile(object):
 
     def peak_intensity(self, xmin, xmax, start=None, stop=None,
                        plot=True, info=None):
+        ''' calculate the integrated intensity in the range xmin, xmax
+        Args:
+            xmin (float): minimum value of the range
+            xmax (float): maximum value of the range
+            start (int): start index of the data to be used
+            stop (int): stop index of the data to be used
+            plot (bool): if True, plot the result
+            info (str): if not None, plot this info in a second y axis
+        '''
         x = [i.info['index'] for i in self.data]
         axmin = np.searchsorted(self.data[start:stop][0].x, xmin)
         axmax = np.searchsorted(self.data[start:stop][0].x, xmax)

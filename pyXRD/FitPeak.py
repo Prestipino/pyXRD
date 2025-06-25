@@ -7,6 +7,7 @@ try:
 except Exception as e:
     pass
 
+from uncertainties import unumpy
 
 # from indexed import IndexedOrderedDict as ODict
 
@@ -26,6 +27,26 @@ def newfigure(pattern, *args, **kargs):
     plt.plot(pattern[0], pattern[1])
     plt.xlabel('2$\Theta$($\degree$)')
     plt.ylabel('Intensity (Counts)')
+
+def uplot(x, y, fmt='', *args, **kwargs):
+    """Wrapper for plt.plot that handles ufloat arrays"""
+    from uncertainties import unumpy
+    if hasattr(y, 'dtype') and y.dtype == object and all(hasattr(val, 'nominal_value') for val in y):
+        y_nom = unumpy.nominal_values(y)
+        y_err = unumpy.std_devs(y)
+    else:
+        y_nom = y
+        y_err = None
+    if hasattr(x, 'dtype') and x.dtype == object and all(hasattr(val, 'nominal_value') for val in x):
+        x_nom = unumpy.nominal_values(x)
+        x_err = unumpy.std_devs(x)
+    else:
+        x_nom = x
+        x_err = None
+    if (x_err or y_err) is None:
+        return plt.plot(x, y, fmt, *args, **kwargs)
+    
+    return plt.errorbar(x_nom, y_nom, yerr=y_err, xerr=x_err, fmt= fmt, *args, **kwargs)
 
 # ##########       Util functions      #################
 
@@ -50,15 +71,21 @@ def ran_peak(x, center, range=None):
 
 def data_lim(data, drs):
     """limit the data using an array with two values
-    args:
+    Args:
         data (np.array): 2D array with the first row as x values
         drs (list or np.array): two values defining the range to limit the data
+
     returns:
         np.array: 2D array with the data limited to the range defined by drs
     """
-    return data[:, index_of(data[0], drs[0]): index_of(data[0], drs[1]) + 1]
-
-
+    try:
+        totranspose = data.shape[0] > data.shape[1]
+    except IndexError:
+        totranspose = False
+    if totranspose:
+        data = data.T
+    data =data[:, index_of(data[0], drs[0]): index_of(data[0], drs[1]) + 1]
+    return data 
 def data_exc(data, drs):
     """exclude a range from the data
     """
@@ -407,14 +434,14 @@ def create_PicBack(x, y, centers, back, back_int=None, back_degree=1, Guess=True
 
 
     Args:
-        x
-        y
-        centers
-        back
+        x   (np.array): x values of the data
+        y   (np.array): data to fit
+        centers = list of centers of the peaks
+        back = list of points to use for background
         back_int=None: background intensity if None use y values at back points
         back_degree=1 degree of polinomial used for background
         Guess :Guess [True] or ['C'] stay for course
-        prg (float): range to guess the peak
+        prg (float): range to used to estimate if a peak is superimposed usend in guest
         Pconstrain= peak constrain
                         example
                             constrain  : ex. {'amplitude': {'min':0, 'vary':False},
@@ -430,7 +457,7 @@ def create_PicBack(x, y, centers, back, back_int=None, back_degree=1, Guess=True
 
     # Background definitions
     line_mod = PolynomialModel(degree=back_degree, prefix='line_')
-    if back_int is not None:
+    if back_int is None:
         pars = line_mod.guess(data=y, x=x, points=back)
     else:
         pars = line_mod.guess(data=back_int, x=back)
@@ -485,17 +512,34 @@ def plot_guess(x, y, model, param):
 
 # peak detection function
 def out_result(out, param=None):
+    '''return a list of dict with the peak parameters
+    Args:   
+        out (lmfit.model.ModelResult): the result of a fit
+        param (list or str): list of parameters to return 
+                if None return all the parameters 
+    Returns:
+        peaks (list of dict): list of dict with the peak parameters
+        peaks (np.array): if param is str return a 1D array with the parameters
+    '''
     peaks = []
+    numeric = False
     if param is None:
         param = ['center', 'H', 'HG', 'HL',
                  'amplitude', 'Beta']
-
+    if isinstance(param, str):
+        param = [param]
+        numeric = True
     for pic in out.components[1:]:
         picco = {}
         for i in param:
             picco[i] = {'value': out.params[pic.prefix + i].value,
                         'stderr': out.params[pic.prefix + i].stderr}
         peaks.append(picco)
+    if numeric:
+        values = np.array([picco[param[0]]['value'] for picco in peaks])
+        errors = np.array([picco[param[0]]['stderr'] for picco in peaks])
+        return unumpy.uarray(values, errors)
+        
     return peaks
 
 
