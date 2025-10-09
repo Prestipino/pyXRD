@@ -28,6 +28,7 @@ draw()
 import numpy as np
 from matplotlib import pylab as plt
 from .bkground import spline_bkg
+from matplotlib import  gridspec
 from .parsers import read_raw, read_D1B, read_id22, read_ras, read_rasx
 
 plt.ion()
@@ -107,8 +108,7 @@ class XRDdata(np.ndarray):
         plt.xlabel(r'2$\theta$ ($\degree$)')
         plt.ylabel('Intensity (counts)')
 
-    def export(self, name, Format='xy', info=None,
-               prec=None, bkg=False, inname=False, fmt='%1.10f'):
+    def export(self, name, Format='xy', info=None, prec=None, bkg=False, inname=False, fmt='%1.10f'):
         """ export to text function
         Args:
         name (str): basename
@@ -215,7 +215,6 @@ class XRDdata(np.ndarray):
         else:
             return np.sqrt(y) / np.sqrt(time)
 
-
     @err.setter
     def err(self, val):
         self._err = val
@@ -274,7 +273,7 @@ class XRDfile(object):
         elif filename:
             if isinstance(filename, list):
                 listaXRDfile = []
-                for i, file in  enumerate(filename):
+                for i, file in enumerate(filename):
                     listaXRDfile.append(XRDfile(file, debug=debug))
                     listaXRDfile[-1].info['index'] = i
                 self.info = listaXRDfile[0].info
@@ -326,7 +325,7 @@ class XRDfile(object):
                     datainfo = {'TEMPERATURE':float(info['Temp']), 'UNIT':info['IntensityUnit'], 'STEPTIME':1}
                     datainfo['index'] = i
                     datainfo.update(info)
-                    self.data.append(XRDdata(data, datainfo))            
+                    self.data.append(XRDdata(data, datainfo))
             else:
                 print('unknown format')
 
@@ -356,7 +355,7 @@ class XRDfile(object):
                 continue
             elif lin[0] == '_':
                 if section == 'General':
-                    set_UXDat(self, lin)
+                    set_UXDat(self.info, lin)
                 elif section == 'data_n':
                     section = 'data_i'
                 elif section == 'data_i':
@@ -366,8 +365,14 @@ class XRDfile(object):
                     data.reverse()
                     for i in ["START", "STEPSIZE", "STEPTIME"]:
                         info[i] = float(info[i])
-                    x = calc_x(info["START"], info["STEPSIZE"], data)
-                    data = np.vstack((x, np.loadtxt(data))).T
+                    if 'UNIT' not in info:
+                        info['UNIT']= 'counts'
+                    if info["STEPTIME"] == 0:
+                        info["STEPTIME"] = 1
+                    y = np.loadtxt(data[:-1]).ravel()
+                    np.append(y, np.loadtxt(data[:-1]).ravel())
+                    x = calc_x(info["START"], info["STEPSIZE"], y)
+                    data = np.vstack((x, y)).T
                     self.data.insert(0, XRDdata(data, info=info))
                     info, data, section = {}, [], 'General'
                 else:
@@ -422,8 +427,7 @@ class XRDfile(object):
         for j, i in enumerate(self.data):
             i.info['index'] = j
 
-    def export(self, root='xrd', Format='xy', info=None, prec=None,
-               inname=False):
+    def export(self, root='xrd', Format='xy', info=None, prec=None, inname=False):
         """
            Export available format
            'xy' simple xy without comments
@@ -451,27 +455,36 @@ class XRDfile(object):
             i.export(name, Format=Format, info=info, prec=prec, inname=inname)
         return
 
-    def plot(self, shift=0, start=None, stop=None, info='index',
-             new=True):
-        '''plot the different scans
-        '''
-        if new:
-            def onpick(event):
-                print('\n{} = {}'.format(info, event.artist.get_label()))
-            a = plt.figure()
-            a.canvas.mpl_connect('pick_event', onpick)
+    def plot(self, shift=0, start=None, stop=None, info='index', step=1, fig=None, ax=None):
+        """
+        Plot the different scans either in a new figure (matplotlib)
+        or in a given axis (Tkinter embedded).
+        """
+        # Create new figure if no axis is passed
+        if ax is None:
+            if fig is None:
+                fig, ax = plt.subplots()
 
-        for j, i in enumerate(self.data[start:stop]):
-            if i.info['UNIT'] == 'counts':
-                y = i.y / i.info['STEPTIME']
-            else:
-                y = i.y
-            plt.plot(i.x, y + j * shift, label=str(i.info[info]),
-                     picker=True, pickradius=5)
-        plt.xlabel(r'2$\theta$ ($\degree$)')
-        plt.ylabel('Intensity (cps)')
-        if len(self.data[start:stop]) < 11:
-            plt.legend()
+        info_index = [str(i.info[info]) for i in self.data[start:stop:step]]
+        if info != 'index':
+            index = [i.info['index'] for i in self.data[start:stop:step]]
+            info_index = [f'{i:n} {j:s}' for  i,j in zip(index, info_index)]
+
+
+        def onpick(event):
+            print('\n{} = {}'.format(info, event.artist.get_label()))
+        fig.canvas.mpl_connect('pick_event', onpick)
+
+        info
+        for j, i in enumerate(self.data[start:stop:step]):
+            y = i.y / i.info['STEPTIME'] if i.info['UNIT'] == 'counts' else i.y
+            ax.plot(i.x, y + j * shift, label=info_index[j], picker=True, pickradius=5)
+
+        ax.set_xlabel(r'2$\theta$ ($\degree$)')
+        ax.set_ylabel('Intensity (cps)')
+
+        if len(self.data[start:stop:step]) < 11:
+            ax.legend()
 
     def plot_info(self, info, new=1, *args, **keyargs):
         '''plot a scan info as function of the scan number
@@ -487,32 +500,63 @@ class XRDfile(object):
         y = [float(i.info[info]) for i in self.data]
         plt.plot(x, y, label=info, *args, **keyargs)
 
-    def D2plot(self, log=0, start=None, stop=None, info='index', **keyargs):
+    def D2plot(self, log=0, start=None, stop=None, info='index', fig=None, **keyargs):
         data = np.vstack([i.cps for i in self.data[start:stop]])
         data = np.flip(data, axis=0)
+
         if log:
             data = np.log(data)
+
         x = self.data[0].x
         y = [i.info[info] for i in self.data[start:stop]]
         index = [i.info['index'] for i in self.data[start:stop]]
+
         if np.unique(np.diff(y)).size == 1:
             onegraph = True
-            ys= y[0]-(y[1]-y[0])/2
-            yf= y[-1]+(y[-1]-y[-2])/2
-            fig = plt.imshow(data, aspect='auto', extent=(  x[0], x[-1], ys, yf), **keyargs)
-            plt.xlabel(r'2$\theta$ ($\degree$)')
-            plt.ylabel(info)
+            ys = y[0] - (y[1] - y[0]) / 2
+            yf = y[-1] + (y[-1] - y[-2]) / 2
+
+            if fig is None:
+                fig, ax = plt.subplots()
+            else:
+                ax = fig.add_subplot(111)
+
+            im = ax.imshow(data, aspect='auto', extent=(x[0], x[-1], ys, yf), picker=True, **keyargs)
+            ax.set_xlabel(r'2$\theta$ ($\degree$)')
+            ax.set_ylabel(info)
         else:
             ys = index[0] - 0.5
             yf = index[-1] + 0.5
-            fig, (ax1, ax2) = plt.subplots(1,2, sharey=True, gridspec_kw={'width_ratios': [4, 1]})
-            ax1.imshow(data, aspect='auto', extent=(  x[0], x[-1], ys, yf), **keyargs)
+
+            if fig is None:
+                fig, (ax1, ax2) = plt.subplots(1, 2, sharey=True, gridspec_kw={'width_ratios': [4, 1]})
+            else:
+                gs = gridspec.GridSpec(1, 2, width_ratios=[4, 1], figure=fig)
+                ax1 = fig.add_subplot(gs[0])
+                ax2 = fig.add_subplot(gs[1], sharey=ax1)
+
+            im = ax1.imshow(data, aspect='auto', extent=(  x[0], x[-1], ys, yf), picker=True, **keyargs)
             ax1.set_xlabel(r'2$\theta$ ($\degree$)')
             ax1.set_ylabel('index')
+
             ax2.plot([float(i.info[info]) for i in self.data[start:stop]], index, 'o-')
             ax2.set_xlabel(info)
+            ax2.tick_params(labelright=True, labelleft=False)
             ax2.grid(True)
-            plt.subplots_adjust(wspace=0.05)
+
+            fig.subplots_adjust(wspace=0.05)
+
+
+        def on_pick(event):
+            if event.artist == im:
+            # Get the coordinates from the mouse event
+                x = int(np.round(event.mouseevent.ydata, 0))
+                self.data[x].plot()
+                plt.title(f'{info} {self.data[x].info[info]}')
+
+        fig.canvas.mpl_connect('pick_event', on_pick)
+
+
         return
 
     def get_info(self, info, printout=False):
@@ -541,7 +585,7 @@ class XRDfile(object):
         self.merged = merged
 
     def peak_intensity(self, xmin, xmax, start=None, stop=None,
-                       plot=True, info=None):
+                       plot=True, output=False, info=None):
         ''' calculate the integrated intensity in the range xmin, xmax
         Args:
             xmin (float): minimum value of the range
@@ -551,9 +595,11 @@ class XRDfile(object):
             plot (bool): if True, plot the result
             info (str): if not None, plot this info in a second y axis
         '''
-        x = [i.info['index'] for i in self.data]
+        x = [i.info['index'] for i in self.data[start:stop]]
         axmin = np.searchsorted(self.data[start:stop][0].x, xmin)
         axmax = np.searchsorted(self.data[start:stop][0].x, xmax)
+        xmin = self.data[start:stop][0][start:stop].x[axmin]
+        xmax = self.data[start:stop][0][start:stop].x[axmax]
         step = (xmax - xmin) / 2
 
         def integP(i):
@@ -579,7 +625,50 @@ class XRDfile(object):
                 ax2.set_ylabel(info, color=c2)
                 ax2.tick_params(axis='y', labelcolor=c2)
             plt.title(f'range {xmin}--{xmax}')
-        return np.vstack((x, y))
+        if output:
+            return np.vstack((x, y))
+
+    def peak_maximum(self, xmin, xmax, start=None, stop=None, plot=True, output=False, info=None):
+        ''' calculate the max position for a peak in the range xmin, xmax
+        Args:
+            xmin (float): minimum value of the range
+            xmax (float): maximum value of the range
+            start (int): start index of the data to be used
+            stop (int): stop index of the data to be used
+            plot (bool): if True, plot the result
+            info (str): if not None, plot this info in a second y axis
+        '''
+        x = [i.info['index'] for i in self.data[start:stop]]
+        axmin = np.searchsorted(self.data[start:stop][0].x, xmin)
+        axmax = np.searchsorted(self.data[start:stop][0].x, xmax)
+
+        def maxP(i):
+            m = (i.y[axmax] - i.y[axmin]) / i.x[axmax] - i.x[axmin]
+            b = i.y[axmin] - m * i.x[axmin]
+            ix = np.argmax(i.y[axmin:axmax] - i.x[axmin:axmax] * m - b)
+            return i.x[axmin:axmax][ix]
+
+        y = [maxP(i) for i in self.data[start:stop]]
+
+        if plot:
+            c1 = 'tab:blue'
+            fig, ax1 = plt.subplots()
+            ax1.plot(x, y, '.-', color=c1)
+            ax1.set_xlabel('index')
+            ax1.set_ylabel('position of the maximum')
+            if info:
+                c2 = 'tab:red'
+                ax1.tick_params(axis='y', labelcolor=c1)
+                ax1.set_ylabel('integrated intensity', color=c1)
+                ax2 = ax1.twinx()
+                ax2.plot(x,
+                         [float(i.info[info]) for i in self.data[start:stop]],
+                         '-', color=c2)
+                ax2.set_ylabel(info, color=c2)
+                ax2.tick_params(axis='y', labelcolor=c2)
+            plt.title(f'range {xmin}--{xmax}')
+        if output:
+            return np.vstack((x, y))
 
 
 def merge_XRD(slicei, plot=True):

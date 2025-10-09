@@ -1,7 +1,10 @@
 import numpy as np
 import xraydb as xdb
-from .PStrut import Crystal
 
+try:
+    from .PStrut import Crystal
+except NameError:
+    print('Dans_Diffraction not installed, no periodic structure functionality')
 
 def npsind(x): return np.sin(x * np.pi / 180.)
 def npcosd(x): return np.cos(x * np.pi / 180.)
@@ -206,13 +209,19 @@ def MuR(R, Mat, EneWL=0.71, pack=0.6, density=False, compo=False):
     pack: packing factor, default 0.6, used only for crystal no density
     """
 
-    if isinstance(Mat, Crystal):
-        density = Mat.Properties.density() * pack
-        Comp = Mat.Properties.molname()
-    elif isinstance(Mat, str):
-        Comp = Mat
-    else:
-        raise ValueError('Work Only with string and Crystal object')
+    try :
+        if isinstance(Mat, Crystal):
+            density = Mat.Properties.density() * pack
+            Comp = Mat.Properties.molname()
+        elif isinstance(Mat, str):
+            Comp = Mat
+        else:
+            raise ValueError('Work Only with string and Crystal object')
+    except NameError:
+        if isinstance(Mat, str):
+            Comp = Mat
+        else:
+            raise ValueError('Work Only with string and Crystal object')
 
     if isinstance(EneWL, np.ndarray):
         EneWL0 = EneWL[0]

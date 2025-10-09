@@ -14,7 +14,10 @@ import copy
 import math
 from numpy import pi, dot, allclose, array, mean, vstack, tile
 import numpy as np
-import Dans_Diffraction as dans
+try:
+    import Dans_Diffraction as dans
+except:
+    pass
 import matplotlib.pyplot as plt
 
 

@@ -43,6 +43,7 @@ def read_ras(filename):
 
 from typing import List, Tuple, Dict
 
+
 def read_rasx(file_path: str) -> List[Tuple[np.ndarray, Dict[str, str]]]:
     """
     Parses a Rigaku .rasx file with multiple datasets (e.g., Data0, Data1, ...) using NumPy for
@@ -103,7 +104,6 @@ def read_rasx(file_path: str) -> List[Tuple[np.ndarray, Dict[str, str]]]:
             results.append((profile_array, metadata))
 
     return results
-
 
 
 def read_id22(self, filename):
