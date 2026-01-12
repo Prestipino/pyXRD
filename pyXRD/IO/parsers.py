@@ -7,6 +7,7 @@ import os
 import re
 import zipfile
 import xml.etree.ElementTree as ET
+from io import StringIO
 
 
 def calc_x(start, step, data):
@@ -16,29 +17,47 @@ def calc_x(start, step, data):
 
 def read_ras(filename):
     with open(filename) as ifile:
-        ifilecom = [j[1:] for j in ifile.readlines() if j[0] == '*']
-    data = np.loadtxt(filename, comments='*')[:, :2]
-    meas_dict = dict([j.split()[:2] for j in ifilecom if 'MEAS' in j])
-    valkeyn = [i[24:] for i, j in meas_dict.items() if ('AXIS_POS' in i) and ('None' not in j)]
-    vmeas_d = {}
-    vmeas_d['info_g'] = {}
-    for ik in valkeyn:
-        name = meas_dict[f'MEAS_COND_AXIS_NAME-{ik}'][1:-1]
-        vmeas_d[name] = {'POS': meas_dict[f'MEAS_COND_AXIS_POSITION-{ik}'][1:-1]}
-        vmeas_d[name]['INAME'] = meas_dict[f'MEAS_COND_AXIS_NAME_INTERNAL-{ik}'][1:-1]
-        if meas_dict[f'MEAS_COND_AXIS_UNIT-{ik}'][1:-1]:
-            vmeas_d[name]['unit'] = meas_dict[f'MEAS_COND_AXIS_UNIT-{ik}'][1:-1]
-    vmeas_d['SCAN_START_TIME'] = meas_dict['MEAS_SCAN_START_TIME'][1:-1]
-    vmeas_d['UNIT'] = meas_dict['MEAS_SCAN_UNIT_Y'][1:-1]
-    meas_dict = dict([j.split()[:2] for j in ifilecom if 'HW_' in j])
-    vmeas_d['info_g']['ATTACHMENT_NAME'] = meas_dict['HW_ATTACHMENT_NAME'][1:-1]
-    vmeas_d['info_g']['CATHODE'] = meas_dict['HW_XG_TARGET_NAME'][1:-1]
-    vmeas_d['info_g']['ALPHA1'] = meas_dict['HW_XG_WAVE_LENGTH_ALPHA1']
-    vmeas_d['info_g']['ALPHA2'] = meas_dict['HW_XG_WAVE_LENGTH_ALPHA2']
+        orig_files = ifile.readlines()
+    datas_lim = [i for i, line in enumerate(orig_files) if "RAS_HEADER_START" in line]
+    n_data= len(datas_lim)
+    data_tot = []
+    info_g = {'n_datasets': n_data}
+    for i, start_line in enumerate(datas_lim):
+        end_line = datas_lim[i+1] if i+1 < n_data else len(orig_files)
+        data_block = orig_files[start_line:end_line] 
+        ifilecom = [j[1:] for j in data_block if j[0] == '*']
+        data = np.loadtxt(data_block, comments='*')[:, :2]
+        try:
+            meas_dict = dict([j.split()[:2] for j in ifilecom if 'MEAS' in j])
+            valkeyn = [i[24:] for i, j in meas_dict.items() if ('AXIS_POS' in i) and ('None' not in j)]
+            vmeas_d = {'index': i}
+            for ik in valkeyn:
+                name = meas_dict[f'MEAS_COND_AXIS_NAME-{ik}'][1:-1]
+                vmeas_d[name] = {'POS': meas_dict[f'MEAS_COND_AXIS_POSITION-{ik}'][1:-1]}
+                vmeas_d[name]['INAME'] = meas_dict[f'MEAS_COND_AXIS_NAME_INTERNAL-{ik}'][1:-1]
+                if meas_dict[f'MEAS_COND_AXIS_UNIT-{ik}'][1:-1]:
+                    vmeas_d[name]['unit'] = meas_dict[f'MEAS_COND_AXIS_UNIT-{ik}'][1:-1]
+            vmeas_d['SCAN_START_TIME'] = meas_dict['MEAS_SCAN_START_TIME'][1:-1]
+            vmeas_d['UNIT'] = meas_dict['MEAS_SCAN_UNIT_Y'][1:-1]
+            vmeas_d['STEPTIME'] = 1/float(meas_dict['MEAS_SCAN_SPEED'][1:-1])
+            meas_dict = dict([j.split()[:2] for j in ifilecom if 'HW_' in j])
+            try:
+                info_g['ATTACHMENT_NAME'] = meas_dict['HW_ATTACHMENT_NAME_INTERNAL'][1:-1]
+            except KeyError:
+                pass    
+            info_g['CATHODE'] = meas_dict['HW_XG_TARGET_NAME'][1:-1]
+            info_g['ALPHA1'] = meas_dict['HW_XG_WAVE_LENGTH_ALPHA1']
+            info_g['ALPHA2'] = meas_dict['HW_XG_WAVE_LENGTH_ALPHA2']
+        except Exception as e:
+            print(e)
+            vmeas_d = {'index': 0, 'UNIT': 'counts', 'STEPTIME': 1}
 
-    if [True for i in ifilecom if "VariableSlit" in i]:
-        vmeas_d['Var_slit'] = True
-    return data, vmeas_d
+        if [True for i in ifilecom if "VariableSlit" in i]:
+            vmeas_d['Var_slit'] = True
+        else:
+            vmeas_d['Var_slit'] = False
+        data_tot.append({'data': data, 'info':vmeas_d})
+    return data_tot, info_g
 
 
 from typing import List, Tuple, Dict
@@ -133,19 +152,33 @@ def read_D1B(self, filename):
             a = filet.readlines()
         dato1 = np.loadtxt(a[6:])
         info['title'] = a[0]
-        info['INTER'] = a[1]
-        for i, j in zip([1, 2, 3], a[2].split()[1:]):
-            info['TEMP_%d' % i] = float(j)
-        info['COMMENT_1'] = a[3]
-        info['COMMENT_2'] = a[4]
-        MonTim = a[5].split()[-2:]
-        info['Monitor'] = float(MonTim[0])
-        info['ConTime'] = float(MonTim[1])
+        if 'XYDATA' not in a[0]:
+            raise ValueError('not a datill file')
+        for i_line in a[1:6]:
+            ncomment=1
+            if 'INTER' in i_line:
+                info['INTER'] = i_line
+            elif 'TEMP' in i_line:
+                temps = i_line.split('TEMP')[-1].split()
+                if len(temps)>1:
+                    info.update({['TEMP_%d' % i+1] : float(j) for i,j in enumerate(temps)})
+                else:
+                    info['TEMP'] = float(temps[0])
+            elif 'Monitor' in i_line:
+                MonTim = i_line.split()[-2:]
+                info['Monitor'] = float(MonTim[0])
+                info['ConTime'] = float(MonTim[1])      
+            else:
+                info['COMMENT_%d' % ncomment] = i_line
+                ncomment += 1
         return dato1, info
 
     if isinstance(filename, str):
         self.data = []
         datas, info = read_file(filename)
+        info['UNIT'] = 'counts'
+        info['STEPTIME'] = 1
+        info['index'] = 0
         # print(info, datas.shape)
         self.data.append({'array': datas, 'info': info})
 
@@ -266,7 +299,7 @@ def read_raw(self, filename):
                 #filex.read(8);                            # address 120 # noqa
                 #filex.read(4);                            # address 128 # noqa
                 #filex.read(4);                            # address 132 # noqa
-                blkmeta["Detectype"] : read_s(offset + 136, 5)  # address 136 # noqa
+                blkmeta["Detectype"] = read_s(offset + 136, 5)  # address 136 # noqa
                 #filex.read(3); # unused                   # address 141 # noqa
                 #filex.read(8);                            # address 144 # noqa
                 #filex.read(8);                            # address 152 # noqa
@@ -314,7 +347,6 @@ def read_raw(self, filename):
 
             y = np.frombuffer(bfile[next_data:], dtype=np.float32, count=blkmeta["STEPS"])
             x = calc_x(blkmeta["START_2THETA"], blkmeta["STEPSIZE"], y)
-            SS
             print('shape x, y ', x.shape, y.shape)
             offset = next_data + 4 * blkmeta["STEPS"]
 
@@ -469,7 +501,7 @@ def read_raw(self, filename):
                 print(type(frase))
                 print('just before ', filex.tell())
                 if self.debug:
-                    raise fras
+                    raise frase
             
 
             pos += datum_size * blkmeta["STEPS"]
@@ -477,4 +509,27 @@ def read_raw(self, filename):
     for j, i in enumerate(self.data):
         i['info']['index'] = j
         i['info']['UNIT'] = 'counts'
+
+
+def RigakuRawReader(file_path):
+    with open(file_path, 'rb') as f:
+        header = f.read(3158)
+        f.seek(0x0B92)
+        start_angle = np.frombuffer(f.read(4), dtype='<f4')[0]
+        f.seek(0x0B96)
+        end_angle = np.frombuffer(f.read(4), dtype='<f4')[0]
+        f.seek(0x0B9A)
+        step = np.frombuffer(f.read(4), dtype='<f4')[0]
+        num_points = int(round((end_angle - start_angle) / step)) + 1
+        scan_x = np.arange(start_angle, end_angle + step/2, step)
+
+        f.seek(0x0C56)
+        scan_y = []
+        for _ in range(num_points):
+            value = np.frombuffer(f.read(4), dtype='<f4')[0]
+            scan_y.append(value)
+        scan_y = np.array(scan_y)
+    data = np.vstack((scan_x, scan_y)).T
+    datainfo = { 'UNIT':'counts', 'STEPTIME':1}
+    return data, datainfo
 

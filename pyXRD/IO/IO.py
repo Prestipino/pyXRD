@@ -26,10 +26,10 @@ draw()
 
 
 import numpy as np
-from matplotlib import pylab as plt
-from .bkground import spline_bkg
+from matplotlib import pyplot as plt
+from .bkground import polyfitFig as spline_bkg
 from matplotlib import  gridspec
-from .parsers import read_raw, read_D1B, read_id22, read_ras, read_rasx
+from .parsers import read_raw, read_D1B, read_id22, read_ras, read_rasx, RigakuRawReader
 
 plt.ion()
 
@@ -69,7 +69,10 @@ class XRDdata(np.ndarray):
         # We first cast to be our class type
         obj = np.asarray(input_array).view(cls)
         # add the new attribute to the created instance
-        obj.info = info
+        if info is None:
+            obj.info = {}
+        else:
+            obj.info = info
         obj.x = obj[:, 0]
         obj.y = obj[:, 1]
         try :
@@ -77,6 +80,9 @@ class XRDdata(np.ndarray):
         except:
             pass
         # Finally, we must return the newly created object:
+
+        if 'index' not in obj.info:
+            obj.info['index'] = 0
         return obj
 
     def __array_finalize__(self, obj):
@@ -155,7 +161,7 @@ class XRDdata(np.ndarray):
             Fheader[3] = 'background subtracted'
 
         if Format == 'FPxy':
-            Fcomments = ''
+            Fcomments = '!'
 
         # if info:
         #    Fheader[2] = 'TEMP %s\n' % xx[1:]
@@ -273,11 +279,19 @@ class XRDfile(object):
         elif filename:
             if isinstance(filename, list):
                 listaXRDfile = []
+                merged = False
                 for i, file in enumerate(filename):
                     listaXRDfile.append(XRDfile(file, debug=debug))
                     listaXRDfile[-1].info['index'] = i
+                    if len(listaXRDfile[-1].data) > 1:
+                        listaXRDfile[-1].merge(plot=False)
+                        print(f'merging {len(listaXRDfile[-1].data):d} scans \n')
+                        merged = True
                 self.info = listaXRDfile[0].info
-                self.data = [i.data[0] for i in listaXRDfile]
+                if merged:
+                    self.data = [i.merged for i in listaXRDfile]
+                else:
+                    self.data = [i.data[0] for i in listaXRDfile]
                 for i, d in enumerate(self.data):
                     d.info['index'] = i
             elif filename[-5:].upper() == 'XRDML':
@@ -305,16 +319,23 @@ class XRDfile(object):
                     if debug:
                         self._read_UDX(filename)
             elif filename[-3:].upper() == 'RAW':
-                print('reading as RAW Brucker\n')
-                read_raw(self, filename)
-                self.data = [XRDdata(i['array'],
-                                     i['info']) for i in self.data]
+                try:
+                    print('reading as RAW Brucker\n')
+                    read_raw(self, filename)
+                    self.data = [XRDdata(i['array'],
+                                        i['info']) for i in self.data]
+                except:
+                    print('try reading as RAW Rigaku\n')
+                    data, info = RigakuRawReader(self, filename)
+                    self.data = XRDdata(i['array'], i['info'])          
             elif filename[-3:].upper() == 'RAS':
                 print('reading as RAS RIGAKU\n')
                 data, info = read_ras(filename)
                 self.info = info
-                datainfo = {'TEMPERATURE':float(info['Temp'][POS]), 'UNIT':info['UNIT'], 'STEPTIME':1}
-                self.data = [XRDdata(data, datainfo)]
+                self.data = [XRDdata(scan_i['data'], scan_i['info']) for scan_i in data]
+                for i in self.data:
+                    if 'Temp' in i.info:
+                        i.info['TEMPERATURE'] = float(i.info['Temp']['POS'])
             elif filename[-4:].upper() == 'RASX':
                 print('reading as RASX RIGAKU\n')
                 listadata = read_rasx(filename)
@@ -326,6 +347,28 @@ class XRDfile(object):
                     datainfo['index'] = i
                     datainfo.update(info)
                     self.data.append(XRDdata(data, datainfo))
+            elif filename[-3:].upper() in [ '.XY', 'XYE', 'DAT']:
+                try:
+                    read_D1B(self, filename)
+                    self.data = [XRDdata(i['array'], i['info']) for i in self.data]
+                    if 'TEMP_2' in self.data[0].info:
+                        self.data[0].info['TEMPERATURE'] = self.data[0].info['TEMP_2']
+                    elif 'TEMP' in self.data[0].info:
+                        self.data[0].info['TEMPERATURE'] = self.data[0].info['TEMP']                    
+                    print('reading as D1B\n')
+                  
+                except Exception as error:
+                    #print('impossible to open as D1B', error)
+                    pass
+                try:                
+                    read_id22(self, filename)
+                    self.data = [XRDdata(i['array'], i['info']) for i in self.data]
+                    print('reading as xy or xyz\n') 
+                    return 
+                except Exception as error:
+                    pass
+                self._read_sim(filename)  
+                print('reading as profile 1\n')
             else:
                 print('unknown format')
 
@@ -470,12 +513,12 @@ class XRDfile(object):
             index = [i.info['index'] for i in self.data[start:stop:step]]
             info_index = [f'{i:n} {j:s}' for  i,j in zip(index, info_index)]
 
+        if info :
+            def onpick(event):
+                if event.artist.get_label():
+                    print('\n{} = {}'.format(info, event.artist.get_label()))
+            fig.canvas.mpl_connect('pick_event', onpick)
 
-        def onpick(event):
-            print('\n{} = {}'.format(info, event.artist.get_label()))
-        fig.canvas.mpl_connect('pick_event', onpick)
-
-        info
         for j, i in enumerate(self.data[start:stop:step]):
             y = i.y / i.info['STEPTIME'] if i.info['UNIT'] == 'counts' else i.y
             ax.plot(i.x, y + j * shift, label=info_index[j], picker=True, pickradius=5)
@@ -483,7 +526,8 @@ class XRDfile(object):
         ax.set_xlabel(r'2$\theta$ ($\degree$)')
         ax.set_ylabel('Intensity (cps)')
 
-        if len(self.data[start:stop:step]) < 11:
+        lendata = len(self.data[start:stop:step])
+        if (lendata < 11) and  (lendata > 1):
             ax.legend()
 
     def plot_info(self, info, new=1, *args, **keyargs):
